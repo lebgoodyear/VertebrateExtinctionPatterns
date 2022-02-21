@@ -25,9 +25,9 @@
 conda clean -a -y
 
 echo "Creating new R conda environment..."
-conda create -n r_maps -c conda-forge r-base=4.1.0 -y
+conda create -n r_vertex -c conda-forge r-base=4.1.0 -y
 # activate new environment
-source activate r_maps
+source activate r_vertex
 
 # install required packages
 conda install -c conda-forge r-sf=1.0_4 -y

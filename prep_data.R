@@ -27,15 +27,17 @@ library("rnaturalearthhires")
 # set time periods
 # year will be final year of interval
 # e.g. c(1700, 1750, 1800) will be 1701-1750 and 1751-1800
-time_periods <- c(1700, 1750, 1800, 1850, 1900, 1950, 2000)
+time_periods <- c(1700, 1800, 1900, 2000)
 #time_periods <- seq(1950, 1995, 5)
 #time_periods <- seq(1810, 1995, 10)
+
 # set name for time periods for output names
-time_name <- "1700-2000_50y"
+time_name <- "1700-2000_100y"
 
 # set path to data and scripts
 path_data <- "~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/raw_data/"
 path_out_temp <- "~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/r_data_objects/"
+path_loc <- "~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/species_locations/"
 
 # create directory to store the data for this time set
 # first check if directory exists and if not, create it
@@ -49,10 +51,13 @@ path_out <- paste0(path_out_temp, time_name, "/")
 
 
 # read in vertebrate extinction data
-vertex <- read.csv(paste0(path_data, "vert_extinctions.csv"))
+vertex_full <- read.csv(paste0(path_data, "vert_extinctions.csv"))
+
+# combine species and genus column to create column to use with location data
+vertex_full <- vertex_full %>% unite('Taxa', Genus:Species, sep = " ", remove = F)
 
 # remove uncertain extinction time intervals
-vertex <- vertex[which(!(vertex$EX.Last.seen. == "1700-1750")),]
+vertex <- vertex_full[which(!(vertex_full$EX.Last.seen. == "1700-1750")),]
 vertex <- vertex[which(!(vertex$EX.Last.seen == "1500-1600")),]
 vertex <- vertex[!grepl("s", vertex$EX.Last.seen),]
 vertex <- vertex[!grepl("century", vertex$EX.Last.seen),]
@@ -61,6 +66,12 @@ vertex <- vertex[!grepl("approx", vertex$EX.Last.seen),]
 
 # set as date as numeric
 vertex$EX.Last.seen. <- as.numeric(as.character(vertex$EX.Last.seen.))
+
+# species locations
+species_loc <- read_sf(paste0(path_loc, "database_SPECIES.shp"))
+
+# combine species exintction and location data
+vertex <- merge(vertex, species_loc, by.x='Taxa', by.y='specsNm')
 
 # group by specified time periods
 vertex$Year_Block_Var <- NA
@@ -78,11 +89,14 @@ for (t in 2:length(time_periods)-1) {
 # species that went extinct before first time in time periods
 vertex <- vertex[which(!is.na(vertex$Year_Block_Var)),]
 
+# save for mapping
+saveRDS(vertex, paste0(path_out, time_name, "_vertex.rds"))
+
 # compute different summaries
 # sum over required columns
-vertex_block <- vertex %>% group_by(Class, Year_Block_Var, Class_Num) %>% summarize(No_Ex_Spec = n())
+vertex_block <- vertex %>% group_by(Class.x, Year_Block_Var, Class_Num) %>% summarize(No_Ex_Spec = n())
 # include island/continent in summary
-vertex_block_contis <- vertex %>% group_by(Class, Cont.2..Island.1., Year_Block_Var, Class_Num) %>% summarize(No_Ex_Spec = n())
+vertex_block_contis <- vertex %>% group_by(Class.x, Cont.2..Island.1., Year_Block_Var, Class_Num) %>% summarize(No_Ex_Spec = n())
 # total extinctions per year
 vertex_tot <- vertex_block %>% group_by(Year_Block_Var) %>% summarize(No_Ex_Spec_tot = sum(No_Ex_Spec))
 
@@ -152,9 +166,11 @@ popden$Prop_change <- NA
 popden_final <- data.frame()
 for (area in unique(popden$Entity)) {
   popden_sub <- popden[which(popden$Entity == area),]
-  for (time in (2:nrow(popden_sub))) {
-    popden_sub$Prop_change[time] <- (popden_sub$PopDen[time] - popden_sub$PopDen[time-1])/popden_sub$PopDen[time-1]
-  }
+  if (nrow(popden_sub) > 1) {
+    for (time in (2:nrow(popden_sub))) {
+      popden_sub$Prop_change[time] <- (popden_sub$PopDen[time] - popden_sub$PopDen[time-1])/popden_sub$PopDen[time-1]
+    }
+  } else {popden_sub$Prop_change[1] <- NA}
   popden_final <- rbind(popden_final, popden_sub)
 }
 
@@ -169,7 +185,7 @@ saveRDS(popden_final, paste0(path_out, time_name, "_popden_by_country.rds"))
 prop_change_tot <- popden_final %>% group_by(Year) %>% summarize(Prop_change_tot = sum(Prop_change * PopDen)/sum(PopDen))
 
 # save result for use in later scripts
-saveRDS(pop_change_tot, paste0(path_out, time_name, "_popden_change_tot.rds"))
+saveRDS(prop_change_tot, paste0(path_out, time_name, "_popden_change_tot.rds"))
 
 ## manually check summarise results for mean proportional change across countries per year
 
