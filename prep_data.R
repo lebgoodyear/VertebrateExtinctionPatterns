@@ -17,8 +17,6 @@ rm(list=ls())
 
 # load required packages
 library("dplyr")
-library("ggplot2")
-library("gridExtra")
 library("sf")
 library("rnaturalearth")
 #install.packages("rnaturalearthhires", repos = "http://packages.ropensci.org", type = "source")
@@ -27,12 +25,13 @@ library("rnaturalearthhires")
 # set time periods
 # year will be final year of interval
 # e.g. c(1700, 1750, 1800) will be 1701-1750 and 1751-1800
-time_periods <- c(1700, 1800, 1900, 2000)
+#time_periods <- c(1700, 1800, 1900, 2000)
 #time_periods <- seq(1950, 1995, 5)
-#time_periods <- seq(1810, 1995, 10)
+time_periods <- seq(1810, 1995, 10)
+#time_periods <- seq(1460, 2000, 20)
 
 # set name for time periods for output names
-time_name <- "1700-2000_100y"
+time_name <- "1460-2000_20y"
 
 # set path to data and scripts
 path_data <- "~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/raw_data/"
@@ -57,7 +56,8 @@ vertex_full <- read.csv(paste0(path_data, "vert_extinctions.csv"))
 vertex_full <- vertex_full %>% unite('Taxa', Genus:Species, sep = " ", remove = F)
 
 # remove uncertain extinction time intervals
-vertex <- vertex_full[which(!(vertex_full$EX.Last.seen. == "1700-1750")),]
+vertex <- vertex_full[which(!(vertex_full$Century == 2000)),]
+vertex <- vertex[which(!(vertex$EX.Last.seen. == "1700-1750")),]
 vertex <- vertex[which(!(vertex$EX.Last.seen == "1500-1600")),]
 vertex <- vertex[!grepl("s", vertex$EX.Last.seen),]
 vertex <- vertex[!grepl("century", vertex$EX.Last.seen),]
@@ -101,7 +101,7 @@ vertex_block_contis <- vertex %>% group_by(Class.x, Cont.2..Island.1., Year_Bloc
 vertex_tot <- vertex_block %>% group_by(Year_Block_Var) %>% summarize(No_Ex_Spec_tot = sum(No_Ex_Spec))
 
 # remove amphibians
-vertex_noamph <- vertex_block[which(!(vertex_block$Class == "Amphibia")),]
+vertex_noamph <- vertex_block[which(!(vertex_block$Class.x == "Amphibia")),]
 # total extinctions without amphibians
 vertex_noamph_tot <- vertex_noamph %>% group_by(Year_Block_Var) %>% summarize(No_Ex_Spec_tot = sum(No_Ex_Spec))
 
