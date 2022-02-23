@@ -25,7 +25,8 @@ library("gridExtra")
 library("MASS") # negative binomial GLM
 
 # select time name to analyse data from set time periods
-time_name <- "1700-2000_10y"
+time_name <- "1800-2000_5y"
+year_split <- 5
 
 # set path to data and scripts
 path_data <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/r_data_objects/", time_name, "/")
@@ -33,7 +34,12 @@ path_rawdata <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global
 path_out <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/outputs/", time_name, "/")
 
 # load data
+# extinction/population data
 expoptot <- readRDS(paste0(path_data, time_name, "_expoptot.rds"))
+# un population prediction data
+un_pred_full <- read.csv(paste0(path_rawdata, "un_pop_pred_world.csv"))
+# un data is in 1000s so need to multiply by 1000
+un_pred_full[,2:ncol(un_pred_full)] <- un_pred_full[,2:ncol(un_pred_full)]*1000
 
 
 #####################################################################################
@@ -158,10 +164,18 @@ ggplot(data = expoptot, aes(x = Pop, y = NoExSpec)) +
 ########################################################################################
 ################################## Predictions #########################################
 
+
+# generate predictions for 2001-2015
+
 pop_full <- read.csv(paste0(path_rawdata, "population_past_future.csv"), stringsAsFactors = F)
 names(pop_full)[4] <- "Pop"
-#mil2 <- pop_full[which(pop_full$Year %in% c(2005, 2010, 2015)),]
-mil2 <- pop_full[which(pop_full$Year == 2010),]
+
+if (year_split == 5) {
+  mil2 <- pop_full[which(pop_full$Year == 2010),]
+} 
+if (year_split == 10) {
+  mil2 <- pop_full[which(pop_full$Year %in% c(2005, 2010, 2015)),]
+}
 mil2 <- as.data.frame(mil2[which(mil2$Entity=="World"),])
 mil2 <- subset(mil2, select=c("Year", "Pop"))
 
@@ -169,27 +183,26 @@ pred_mil2 <- predict(m1, mil2, type = "response")
 pred_mil2_df <- as.data.frame(cbind(mil2$Year, pred_mil2, mil2$Pop))
 names(pred_mil2_df) <- c("Year", "NoExSpec", "Pop")
  
+# generate explicit predictions for 2050 and 2100 UN data
 
- 
-un_pred_full <- read.csv(paste0(path_rawdata, "un_pop_pred_world.csv"))
-un_pred_full[,2:ncol(un_pred_full)] <- un_pred_full[,2:ncol(un_pred_full)]*1000
+un_pred <- as.data.frame(un_pred_full[,c("X2050", "X2100")])
+un_2050 <- as.data.frame(un_pred$X2050)
+names(un_2050) <- "Pop"
+un_2100 <- as.data.frame(un_pred$X2100)
+names(un_2100) <- "Pop"
 
-#un_pred <- as.data.frame(un_pred_full[,c("X2050", "X2100")])
-#names(un_2050) <- "Pop"
-#names(un_2100) <- "Pop"
-
-#pred_2050 <- predict(m1, un_2050, type = "response")
-#pred_2100 <- predict(m1, un_2100, type = "response")
+pred_2050 <- predict(m1, un_2050, type = "response")
+pred_2100 <- predict(m1, un_2100, type = "response")
 
 # finding the confidence intervals
-#ci_2050 <- predict(m1, un_2050, se.fit=TRUE, type = "link")
-#ci_2100 <- predict(m1, un_2100, se.fit=TRUE, type = "link")
+ci_2050 <- predict(m1, un_2050, se.fit=TRUE, type = "link")
+ci_2100 <- predict(m1, un_2100, se.fit=TRUE, type = "link")
 
-#exp(ci_2050$fit - 2*ci_2050$se.fit)
-#exp(ci_2050$fit + 2*ci_2050$se.fit)
+exp(ci_2050$fit - 2*ci_2050$se.fit)
+exp(ci_2050$fit + 2*ci_2050$se.fit)
 
-#exp(ci_2100$fit - 2*ci_2100$se.fit)
-#exp(ci_2100$fit + 2*ci_2100$se.fit)
+exp(ci_2100$fit - 2*ci_2100$se.fit)
+exp(ci_2100$fit + 2*ci_2100$se.fit)
 
 
 ######## use negative binomial and quasipoisson since mean is not 
@@ -219,8 +232,10 @@ years <- colnames(un_pred_full[2:ncol(un_pred_full)])
 years <- gsub("X", "", years)
 years <- as.numeric(years)
 
-years <- seq(2020, 2100, 10)
-un10 <- un_pred_full[,which(names(un_pred_full) %in% c("X2020", "X2030", "X2040", "X2050", "X2060", "X2070", "X2080", "X2090", "X2100"))]
+years <- seq(2020, 2100, year_split)
+years_char <- as.character(years)
+years_char <- paste0("X", years_char)
+un10 <- un_pred_full[,which(names(un_pred_full) %in% years_char)]
 
 create_pred_df <- function(i) {
   sub <- as.data.frame(t(un10[i,1:ncol(un10)]))
