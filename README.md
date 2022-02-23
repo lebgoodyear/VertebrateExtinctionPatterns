@@ -22,8 +22,4 @@ Produces heatmaps of human population density overlaid with extinction point dat
 
 5) modelling.R
 
-Uses GLMs (quasipoisson with log link and also negative binomial) to model relationship between number of extinctions and human population density/change.
-
-6) predicting.R
-
-Will take UN population prediction scenarios and predict number of extinctions for each scenario.
+Uses GLMs (quasipoisson with log link and also negative binomial) to model relationship between number of extinctions and human population density/change. Also takes UN population prediction scenarios and predicts number of extinctions for each scenario.

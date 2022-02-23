@@ -27,11 +27,11 @@ library("rnaturalearthhires")
 # e.g. c(1700, 1750, 1800) will be 1701-1750 and 1751-1800
 #time_periods <- c(1700, 1800, 1900, 2000)
 #time_periods <- seq(1950, 1995, 5)
-time_periods <- seq(1810, 1995, 10)
+time_periods <- seq(1800, 2000, 5)
 #time_periods <- seq(1460, 2000, 20)
 
 # set name for time periods for output names
-time_name <- "1460-2000_20y"
+time_name <- "1800-2000_5y"
 
 # set path to data and scripts
 path_data <- "~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/raw_data/"
@@ -118,14 +118,24 @@ saveRDS(vertex_noamph_tot, paste0(path_out, time_name, "_noamph_vertex_tot.rds")
 
 
 # read in population density data
-popden_full <- read.csv(paste0(path_data, "human_pop_den.csv"), stringsAsFactors = F)
+pop_full <- read.csv(paste0(path_data, "population_past_future.csv"), stringsAsFactors = F)
+popden_full <- read.csv(paste0(path_data, "human_pop_den_extra.csv"), stringsAsFactors = F)
 
 # rename population density column
+names(pop_full)[4] <- "Population"
 names(popden_full)[4] <- "PopDen"
 
 # filter by time periods
 popden <- popden_full[which(popden_full$Year %in% time_periods),]
 popden <- popden[which(!(popden$PopDen == 0)),]
+pop <- pop_full[which(pop_full$Year %in% time_periods),]
+pop <- pop[which(!(pop$Population == 0)),]
+
+# save world populations
+pop_tot <- pop[which(pop$Entity=="World"),]
+pop_tot <- subset(pop_tot, select=c("Year", "Population"))
+# save result for use in later scripts
+saveRDS(pop_tot, paste0(path_out, time_name, "_pop_tot.rds"))
 
 
 ####### Summarise over mean population density across countries per time period ########
@@ -236,11 +246,21 @@ names(expopden) <- c("Year", "NoExSpec", "PopDen")
 expopden_noamph <- merge(vertex_noamph_tot, popden_tot, by.x = "Year_Block_Var", by.y = "Year")
 names(expopden_noamph) <- c("Year", "NoExSpec", "PopDen")
 
+# combine total extinctions and total pop densities into one dataframe
+expoptot <- merge(vertex_tot, pop_tot, by.x = "Year_Block_Var", by.y = "Year")
+names(expoptot) <- c("Year", "NoExSpec", "Pop")
+
+# combine total extinctions w/o amphibians and total pop den changes into one dataframe
+expoptot_noamph <- merge(vertex_noamph_tot, pop_tot, by.x = "Year_Block_Var", by.y = "Year")
+names(expoptot_noamph) <- c("Year", "NoExSpec", "Pop")
+
 # save results to import into later scripts
 saveRDS(expop, paste0(path_out, time_name, "_expop.rds"))
 saveRDS(expop_noamph, paste0(path_out, time_name, "_expop_noamph.rds"))
 saveRDS(expopden, paste0(path_out, time_name, "_expopden.rds"))
 saveRDS(expopden_noamph, paste0(path_out, time_name, "_expopden_noamph.rds"))
+saveRDS(expoptot, paste0(path_out, time_name, "_expoptot.rds"))
+saveRDS(expoptot_noamph, paste0(path_out, time_name, "_expoptot_noamph.rds"))
 
 
 ## end of script
