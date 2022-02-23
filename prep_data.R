@@ -27,11 +27,11 @@ library("rnaturalearthhires")
 # e.g. c(1700, 1750, 1800) will be 1701-1750 and 1751-1800
 #time_periods <- c(1700, 1800, 1900, 2000)
 #time_periods <- seq(1950, 1995, 5)
-time_periods <- seq(1800, 2000, 5)
+time_periods <- seq(1700, 2000, 10)
 #time_periods <- seq(1460, 2000, 20)
 
 # set name for time periods for output names
-time_name <- "1800-2000_5y"
+time_name <- "1700-2000_10y"
 
 # set path to data and scripts
 path_data <- "~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/raw_data/"
@@ -134,6 +134,7 @@ pop <- pop[which(!(pop$Population == 0)),]
 # save world populations
 pop_tot <- pop[which(pop$Entity=="World"),]
 pop_tot <- subset(pop_tot, select=c("Year", "Population"))
+
 # save result for use in later scripts
 saveRDS(pop_tot, paste0(path_out, time_name, "_pop_tot.rds"))
 
