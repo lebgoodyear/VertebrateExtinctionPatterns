@@ -23,15 +23,25 @@ library("dplyr")
 library("ggplot2")
 library("gridExtra")
 library("MASS") # negative binomial GLM
+library("car") # Anova() for a model
+library("mgcv") # for gam
+library("caret") # for cross validation
 
 # select time name to analyse data from set time periods
-time_name <- "1800-2000_5y"
+time_name <- "1805-2000_5y"
+time_periods <- seq(1805, 2000, 5)
 year_split <- 5
 
 # set path to data and scripts
 path_data <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/r_data_objects/", time_name, "/")
 path_rawdata <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/raw_data/")
-path_out <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/outputs/", time_name, "/")
+path_out_temp <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/outputs/")
+
+# create directory to store the data for this time set
+# first check if directory exists and if not, create it
+ifelse(!dir.exists(file.path(paste0(path_out_temp, time_name))), dir.create(file.path(paste0(path_out_temp, time_name))), FALSE)
+# set directory for results to be sent to
+path_out <- paste0(path_out_temp, time_name, "/")
 
 # load data
 # extinction/population data
@@ -40,48 +50,317 @@ expoptot <- readRDS(paste0(path_data, time_name, "_expoptot.rds"))
 un_pred_full <- read.csv(paste0(path_rawdata, "un_pop_pred_world.csv"))
 # un data is in 1000s so need to multiply by 1000
 un_pred_full[,2:ncol(un_pred_full)] <- un_pred_full[,2:ncol(un_pred_full)]*1000
+# load population raw data to fill in missing years
+pop_full <- read.csv(paste0(path_rawdata, "population_past_future.csv"), stringsAsFactors = F)
+names(pop_full)[4] <- "Pop"
+
+# define 3-fold cross validation with 3 repeats
+train_control <- trainControl(method="repeatedcv", number=5, repeats=5)
 
 
 #####################################################################################
 #################################### Models #########################################
 
 
-#################################### Population ######################################
+# from data exploration, we know data has rough Poisson distribution and that
+# mean is not equal to variance so quasipoisson or negative binomial distributions must be used
+
+# Models used:
+# BASELINE and with CROSS-VALIDATION
+# 1) m1 is a GLM using quasipoisson family with log link function
+# 2) m2 is a GLM using quasipoisson family with log link function, with outliers removed
+# 3) m3 is a negative binomial GLM
+# 4) m4 is a negative binomial GLM, with outliers removed
+# 5) m5 is a GAM using quasipoisson family with log link function
+# 6) m6 is a GAM using quasipoisson family with log link function, with outliers removed
+# 7) m7 is a negative binomial GAM
+# 8) m8 is a negative binomial GAM, with outliers removed
+
+# all these models are combined into one function with outputs stored for comparison
 
 
-# we know mean is not equal to variance so quasipoisson or
-# negative binomial distributions must be used
+###########################################################################################
+################################### Generate model function ###############################
 
-# quasipoisson
-m1 <- glm(NoExSpec ~ Pop, family=quasipoisson(link="log"), data=expoptot)
-summary(m1)
 
-# negative binomial
-m2 <- glm.nb(NoExSpec ~ Pop, data=expoptot)
-summary(m2)
+# function for running and saving model results
+run_models <- function(dataset, x, y, outliers=NA, output_name) {
+  
+  # INPUTS
+  # dataset must be dataframe
+  # x must be name of predictor column as string
+  # y must be name of response column as string
+  # outliers must be vector containing outlying years or NA
+  # output_name is string to save outputs under
+  
+  # create dataset without outliers
+  dataset_woo <- dataset[which(!(dataset$Year %in% outliers)),]
+  
+  # set formula for model creation
+  form <- as.formula(paste(y, '~', x))
+  
+  # set max iterations for negative binomial models
+  maxset = 1000
+  
+  
+  # MODEL 1: quasipoisson GLM
+  
+  
+  ## base
+  m1 <- glm(form, family=quasipoisson(link="log"), data=dataset)
+  r2_m1 <- with(summary(m1), 1 - deviance/null.deviance) # calculate r^2 value
+  # save outputs
+  cat("\n\n Quasipoisson GLM\n", 
+      capture.output(summary(m1)), 
+      file=paste0(path_out, output_name, "_GLM.txt"), 
+      sep = "\n", append=TRUE)
+  cat("\n\nR^2", capture.output(r2_m1), 
+      file=paste0(path_out, output_name, "_GLM.txt"), 
+      sep = "\n", append=TRUE)
+  cat("\n\n\nAnova \n", capture.output(Anova(m1)), 
+      file=paste0(path_out, output_name, "_GLM.txt"), 
+      sep = "\n", append=TRUE)
+  ## cross-validation
+  m1a <- train(form,
+              method = "glm", 
+              family = "quasipoisson",
+              data=dataset,
+              trControl=train_control)
+  r2_m1a <- with(summary(m1a), 1 - deviance/null.deviance) # calculate r^2 value
+  # save outputs
+  cat("\n\n Quasipoisson GLM with cross-validation\n", 
+      capture.output(summary(m1a)), 
+      file=paste0(path_out, output_name, "_GLM.txt"), 
+      sep = "\n", append=TRUE)
+  cat("\n\nR^2", capture.output(r2_m1a), 
+      file=paste0(path_out, output_name, "_GLM.txt"), 
+      sep = "\n", append=TRUE)
+  cat("\n\nCV summary\n", capture.output(print(m1a)), 
+      file=paste0(path_out, output_name, "_GLM.txt"), 
+      sep = "\n", append=TRUE)
+  
+  
+  # MODEL 2: quasipoisson GLM without outliers
+  
+  
+  if (!is.na(outliers)) {
+    ## base
+    m2 <- glm(form, family=quasipoisson(link="log"), data=dataset_woo)
+    r2_m2 <- with(summary(m2), 1 - deviance/null.deviance) # calculate r^2 value
+    # save outputs
+    cat("\n\n Quasipoisson GLM without outliers\n", 
+        capture.output(summary(m2)), 
+        file=paste0(path_out, output_name, "_GLM.txt"), 
+        sep = "\n", append=TRUE)
+    cat("\n\nR^2", capture.output(r2_m2), 
+        file=paste0(path_out, output_name, "_GLM.txt"), 
+        sep = "\n", append=TRUE)
+    cat("\n\n\nAnova \n", capture.output(Anova(m2)), 
+        file=paste0(path_out, output_name, "_GLM.txt"), 
+        sep = "\n", append=TRUE)
+    ## cross-validation
+    m2a <- train(form, 
+                 method = "glm", 
+                 family = "quasipoisson",
+                 data=dataset_woo,
+                 trControl=train_control)
+    r2_m2a <- with(summary(m2a), 1 - deviance/null.deviance) # calculate r^2 value
+    # save outputs
+    cat("\n\n Quasipoisson GLM with cross-validation without outliers\n", 
+        capture.output(summary(m2a)), 
+        file=paste0(path_out, output_name, "_GLM.txt"), 
+        sep = "\n", append=TRUE)
+    cat("\n\nR^2", capture.output(r2_m2a), 
+        file=paste0(path_out, output_name, "_GLM.txt"), 
+        sep = "\n", append=TRUE)
+  }
+    
+  # MODEL 3: negative binomial GLM
+  
+  
+  ## base
+  m3 <- glm.nb(form, data=dataset, maxit=maxset)
+  r2_m3 <- with(summary(m3), 1 - deviance/null.deviance) # calculate r^2 value
+  # save outputs
+  cat("\n\n Negative Binomial GLM\n", 
+      capture.output(summary(m3)), 
+      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      sep = "\n", append=TRUE)
+  cat("\n\nR^2", capture.output(r2_m3), 
+      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      sep = "\n", append=TRUE)
+  cat("\n\n\nAnova \n", capture.output(Anova(m3)), 
+      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      sep = "\n", append=TRUE)
+  ## cross-validation
+  m3a <- train(form, 
+               method = "glm.nb", 
+               maxit = maxset,
+               data=dataset,
+               trControl=train_control)
+  r2_m3a <- with(summary(m1a), 1 - deviance/null.deviance) # calculate r^2 value
+  # save outputs
+  cat("\n\n Negative Binomial GLM with cross-validation\n", 
+      capture.output(summary(m3a)), 
+      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      sep = "\n", append=TRUE)
+  cat("\n\nR^2", capture.output(r2_m3a), 
+      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      sep = "\n", append=TRUE)
+  
+  
+  # MODEL 4: negative binomial GLM without outliers
+  
+  
+  if (!is.na(outliers)) {
+    ## base
+    m4 <- glm.nb(form, data=dataset_woo, maxit=maxset)
+    r2_m4 <- with(summary(m4), 1 - deviance/null.deviance) # calculate r^2 value
+    # save outputs
+    cat("\n\n Negative binomial GLM without outliers\n", 
+        capture.output(summary(m4)), 
+        file=paste0(path_out, output_name, "_GLMnb.txt"), 
+        sep = "\n", append=TRUE)
+    cat("\n\nR^2", capture.output(r2_m4), 
+        file=paste0(path_out, output_name, "_GLMnb.txt"), 
+        sep = "\n", append=TRUE)
+    cat("\n\n\nAnova \n", capture.output(Anova(m4)), 
+        file=paste0(path_out, output_name, "_GLMnb.txt"), 
+        sep = "\n", append=TRUE)
+    ## cross-validation
+    m4a <- train(form, 
+                 method = "glm.nb",
+                 maxit=maxset,
+                 data=dataset_woo,
+                 trControl=train_control)
+    r2_m4a <- with(summary(m1a), 1 - deviance/null.deviance) # calculate r^2 value
+    # save outputs
+    cat("\n\n Negative Binomial GLM with cross-validation without outliers\n", 
+        capture.output(summary(m4a)), 
+        file=paste0(path_out, output_name, "_GLMnb.txt"), 
+        sep = "\n", append=TRUE)
+    cat("\n\nR^2", capture.output(r2_m4a), 
+        file=paste0(path_out, output_name, "_GLMnb.txt"), 
+        sep = "\n", append=TRUE)
+  }
+  
+  
+  # MODEL 5: quasipoisson GAM
+  
+  
+  ## base
+  m5 <- gam(form, family=quasipoisson(link="log"), data=dataset)
+  # save outputs
+  cat("\n\n Quasipoisson GAM\n", 
+      capture.output(summary(m5)), 
+      file=paste0(path_out, output_name, "_GAM.txt"), 
+      sep = "\n", append=TRUE)
+  ## cross-validation
+  m5a <- train(form, 
+               method = "gam", 
+               family = "quasipoisson",
+               data=dataset,
+               trControl=train_control)
+  # save outputs
+  cat("\n\n Quasipoisson GAM with cross-validation\n", 
+      capture.output(summary(m5a)), 
+      file=paste0(path_out, output_name, "_GAM.txt"), 
+      sep = "\n", append=TRUE)
 
-# plot two models over data
-par(mfrow=c(1,1))
-plot(expoptot$Pop,expoptot$NoExSpec,pch=16)
-lines(expoptot$Pop,predict(m1, type="response"))
-lines(expoptot$Pop,predict(m2, type = "response"),lty=1,col="red")
-
-# negative binomial model will produce much larger predictions
-# than quasipoisson since curve has a larger growth rate
-
-#plot(m1)
+  
+  # MODEL 6: quasipoisson GAM without outliers
+  
+  
+  if (!is.na(outliers)) {
+    ## base
+    m6 <- gam(form, family=quasipoisson(link="log"), data=dataset_woo)
+    # save outputs
+    cat("\n\n Quasipoisson GAM without outliers\n", 
+        capture.output(summary(m6)), 
+        file=paste0(path_out, output_name, "_GAM.txt"), 
+        sep = "\n", append=TRUE)
+    ## cross-validation
+    m6a <- train(form, 
+                 method = "gam", 
+                 family = "quasipoisson",
+                 data=dataset_woo,
+                 trControl=train_control)
+    # save outputs
+    cat("\n\n Quasipoisson GAM with cross-validation without outliers\n", 
+        capture.output(summary(m6a)), 
+        file=paste0(path_out, output_name, "_GAM.txt"), 
+        sep = "\n", append=TRUE)
+  }
+    
+    
+  # MODEL 7: negative binomial GAM
+  
+  
+  ## base
+  m7 <- gam(form, family=nb(), data=dataset)
+  # save outputs
+  cat("\n\n Negative Binomial GAM\n", 
+      capture.output(summary(m7)), 
+      file=paste0(path_out, output_name, "_GAMnb.txt"), 
+      sep = "\n", append=TRUE)
+  ## cross-validation
+  m7a <- train(form, 
+               method = "gam", 
+               family = nb(),
+               data=dataset,
+               trControl=train_control)
+  # save outputs
+  cat("\n\n Negative Binomial GAM with cross-validation\n", 
+      capture.output(summary(m7a)), 
+      file=paste0(path_out, output_name, "_GAMnb.txt"), 
+      sep = "\n", append=TRUE)
+  
+  
+  # MODEL 8: negative binomial GAM without outliers
+  
+  
+  if (!is.na(outliers)) {
+    ## base
+    m8 <- gam(form, family=nb(), data=dataset_woo)
+    # save outputs
+    cat("\n\n Negative Binomial GAM without outliers\n", 
+        capture.output(summary(m8)), 
+        file=paste0(path_out, output_name, "_GAMnb.txt"), 
+        sep = "\n", append=TRUE)
+    ## cross-validation
+    m8a <- train(form, 
+                 method = "gam", 
+                 family = nb(),
+                 data=dataset_woo,
+                 trControl=train_control)
+    # save outputs
+    cat("\n\n Negative Binomial GAM with cross-validation without outliers\n", 
+        capture.output(summary(m8a)), 
+        file=paste0(path_out, output_name, "_GAMnb.txt"), 
+        sep = "\n", append=TRUE)
+  }
+  
+  # save models as list
+  if (!is.na(outliers)) {
+    models <- list(m1,m1a,m2,m2a,m3,m3a,m4,m4a,m5,m5a,m6,m6a,m7,m7a,m8,m8a)
+  } else {models <- list(m1,m1a,m3,m3a,m5,m5a,m7,m7a)}
+  
+  #return models
+  return(models)
+  
+}
 
 
 ############### overdispersion notes
 
 
 # model using poisson
-#m0 <- glm(NoExSpec ~ PopDen, family=poisson(link="log"), data=expopden)
+#m0 <- glm(NoExSpec ~ Pop, family=poisson(link="log"), data=expoptot)
 #summary(m0)
 
 # plot mean vs variance to view overdispersion
 #plot(log(fitted(m1)),
-#     log((expopden$NoExSpec-fitted(m1))^2),
+#     log((expoptot$NoExSpec-fitted(m1))^2),
 #     xlab=expression(hat(mu)),ylab=expression((y-hat(mu))^2),
 #     pch=20,col="blue")
 
@@ -96,56 +375,65 @@ lines(expoptot$Pop,predict(m2, type = "response"),lty=1,col="red")
 #summary(m1,dispersion = dp)
 
 
-######################### Change in Population density ##################################
+#######################################################################################
+################################### Run models ########################################
 
 
-#m3 <- glm(NoExSpec ~ PopDenChange, family=quasipoisson(link='log'), data=expop)
-#summary(m3)
+# function will be run over:
+# a) TOTAL EXTINCTIONS, b) EACH CLASS SEPARATELY, AND c) ISLAND/CONTINENT
+# 1) 1805-2000, split by 5 years
+# 2) 1805-2000, split by 5 years, with 1900 and 1955 outliers removed
+# 3) 1805-2000, split by 5 years, with 1900, 1955 outliers removed and 1995, 2000 removed to remove downward trend in GAMs
+# 4) 1710-2000, split by 10 years
+# 5) 1710-2000, split by 10 years, with 1900 outlier removed
+# 6) 1710-2000, split by 10 yearsm with 1900 outlier removed and 2000 removed to remove downward trend in GAMs
 
-#m4 <- glm.nb(NoExSpec ~ PopDenChange, data=expop)
-#summary(m4)
+# note outliers were chosen from the plots in explore_data.R
+# note correlation for 1805-2000 (5 years) was 0.76 so quite high (explore_data.R)
+# and correlation for 1710-2000 (10 years) was0.89 so very high (explore_data.R)
 
-#par(mfrow=c(1,1))
-#plot(expop$PopDenChange,expop$NoExSpec,pch=16)
-#lines(expop$PopDenChange,predict(m3, type="response"))
-#lines(expop$PopDenChange,predict(m4, type = "response"),lty=1,col="red")
+# set outliers depending on time period
+if (year_split == 10) {
+  outliersp <- c(1900)
+  outlierspf <- c(1900, 2000)
+} 
+if (year_split == 5) {
+  outliersp <- c(1900, 1955)
+  outlierspf <- c(1900, 1955, 1995, 2000)
+}
 
-#plot(m3)
+
+# a) TOTAL EXTINCTIONS
+
+extot <- run_models(expoptot, "Pop", "NoExSpec", NA, "extot_na")
+extot_outp <- run_models(expoptot, "Pop", "NoExSpec", outliersp, "extot_outp")
+extot_outpf <- run_models(expoptot, "Pop", "NoExSpec", outlierspf, "extot_outpf")
+
+
+# b) BY CLASS
+
+
 
 
 ########################################################################################
 ############################ Plots with regression lines ###############################
 
 
-# plot human population density change (per time interval as specified above)
-# vs number of extinctions, including regression line calculated by Poisson family GLM
+# plot human population (per time interval as specified above)
+# vs number of extinctions, including regression line calculated by quasioisson family GLM
 # using log link function
-#ggplot(data = expop, aes(x = PopDenChange, y = NoExSpec)) +
+
+#ggplot(data = expoptot, aes(x = Pop, y = NoExSpec)) +
 #  geom_point() +
 #  geom_smooth(method = "glm", method.args = list(family = "quasipoisson")) +
 #  theme_bw()
 
 # plot with predictions
-#ggplot(data = expop, aes(x = PopDenChange, y = NoExSpec)) +
+#ggplot(data = expoptot, aes(x = Pop, y = NoExSpec)) +
 #  geom_point() +
-#  xlim(0, 2.0) +
+#  xlim(0, 13e9) +
 #  geom_smooth(method = "glm", method.args = list(family = "quasipoisson"), fullrange=TRUE) +
 #  theme_bw()
-
-# plot human population (per time interval as specified above)
-# vs number of extinctions, including regression line calculated by quasioisson family GLM
-# using log link function
-ggplot(data = expoptot, aes(x = Pop, y = NoExSpec)) +
-  geom_point() +
-  geom_smooth(method = "glm", method.args = list(family = "quasipoisson")) +
-  theme_bw()
-
-# plot with predictions
-ggplot(data = expoptot, aes(x = Pop, y = NoExSpec)) +
-  geom_point() +
-  xlim(0, 13e9) +
-  geom_smooth(method = "glm", method.args = list(family = "quasipoisson"), fullrange=TRUE) +
-  theme_bw()
 
 # plot with predictions for negative binomial
 #ggplot(data = expoptot, aes(x = Pop, y = NoExSpec)) +
@@ -165,47 +453,229 @@ ggplot(data = expoptot, aes(x = Pop, y = NoExSpec)) +
 ################################## Predictions #########################################
 
 
-# generate predictions for 2001-2015
+##################################### Functions ########################################
 
-pop_full <- read.csv(paste0(path_rawdata, "population_past_future.csv"), stringsAsFactors = F)
-names(pop_full)[4] <- "Pop"
 
-if (year_split == 5) {
-  mil2 <- pop_full[which(pop_full$Year == 2010),]
-} 
-if (year_split == 10) {
-  mil2 <- pop_full[which(pop_full$Year %in% c(2005, 2010, 2015)),]
+# function to process data in order to make predictions
+process_data <- function(dataset, year_split, scenario) {
+  
+  # INPUTS
+  
+  # dataset is dataframe of year ("Year") and predictor ("Pop")
+  # model is the model you want to use to predict response
+  # year_split is either 5 or 10, depending on time period you want to predict over
+  # scenario is the prediction curve you want: "Upper 95",  "Lower 95" or "Median"
+  
+  # OUTPUTS
+  
+  # a dataframe containing population data for all past and future time points,
+  # accroding to chosen UN scenario
+  
+  # only keep world pop data
+  dataworld <- as.data.frame(dataset[which(dataset$Entity=="World"),])
+  # subset by year and population
+  dataworld <- subset(dataworld, select=c("Year", "Pop"))
+  # subset by years in time_periods
+  datasub <- as.data.frame(dataworld[which(dataworld$Year %in% time_periods),])
+  
+  # fill year gaps
+  if (year_split == 10) {
+    gap <- dataworld[which(dataworld$Year == 2010),]
+  } 
+  if (year_split == 5) {
+    gap <- dataworld[which(dataworld$Year %in% c(2005, 2010, 2015)),]
+  }
+  
+  # combine with dataset
+  pops_past <- as.data.frame(rbind(datasub, gap))
+  
+  # store scenario bound names
+  bounds_names <- un_pred_full$PredictionBound
+  
+  # split by required years
+  years <- seq(2020, 2100, year_split)
+  years_char <- as.character(years)
+  years_char <- paste0("X", years_char) # set to match colnames
+  
+  # subset by years
+  unpred <- un_pred_full[,which(names(un_pred_full) %in% years_char)]
+  unpred <- as.data.frame(t(unpred)) # transpose
+  names(unpred) <- bounds_names # set column names to scenario boundaries
+  
+  # add years to pops
+  pops_future <- as.data.frame(cbind(years, unpred[[scenario]]))
+  names(pops_future) <- c("Year", "Pop")
+  
+  # conbine past and future pops into one dataframe
+  allpops <- rbind(pops_past, pops_future)
+  
+  return(allpops)
+  
 }
-mil2 <- as.data.frame(mil2[which(mil2$Entity=="World"),])
-mil2 <- subset(mil2, select=c("Year", "Pop"))
+  
+# function to make predictions on a per model basis
+make_predictions <- function(dataset, model) {
+  
+  # extract populations
+  pops <- as.data.frame(dataset$Pop)
+  names(pops) <- "Pop"
+  
+  # make precitions
+  if (class(model)[1] == "train") {
+    preds <- predict(model, pops, type = "raw")
+  } else {
+    preds <- predict(model, pops, type = "response")
+  }
+  
+  # combine pop dataset with predictions
+  preddf <- cbind(dataset, preds)
+  names(preddf) <- c("Year", "Pop", "NoExSpec")
+  
+  # finding the confidence intervals
+  if (class(model)[1] == "train") {
+    ci <- predict(model$finalModel, preddf, se.fit=TRUE, type = "link")
+  } else {
+    ci <- predict(model, preddf, se.fit=TRUE, type = "link")
+  }
+  
+  # lower limit
+  cil <- (ci$fit - 2*ci$se.fit)^2
+  # upper limit
+  ciu <- (ci$fit + 2*ci$se.fit)^2
+  
+  # combine all data and confidence intervals for plotting
+  fulldf <- cbind(dataset, preds, cil, ciu)
+  names(fulldf) <- c("Year", "Pop", "NoExSpec", "UpperCI", "LowerCI")
+  
+  return(fulldf)
+  
+}
 
-pred_mil2 <- predict(m1, mil2, type = "response")
-pred_mil2_df <- as.data.frame(cbind(mil2$Year, pred_mil2, mil2$Pop))
-names(pred_mil2_df) <- c("Year", "NoExSpec", "Pop")
- 
-# generate explicit predictions for 2050 and 2100 UN data
 
-un_pred <- as.data.frame(un_pred_full[,c("X2050", "X2100")])
-un_2050 <- as.data.frame(un_pred$X2050)
-names(un_2050) <- "Pop"
-un_2100 <- as.data.frame(un_pred$X2100)
-names(un_2100) <- "Pop"
+########################################################################################
+######################### Generate prediction datasets #################################
 
-pred_2050 <- predict(m1, un_2050, type = "response")
-pred_2100 <- predict(m1, un_2100, type = "response")
+
+# create datasets for predictions
+popsu95 <- process_data(pop_full, year_split, "Upper 95")
+popsmed <- process_data(pop_full, year_split, "Median")
+popsl95 <- process_data(pop_full, year_split, "Lower 95")
+
+# create predictions for each model
+dfs <- list(popsu95, popsmed, popsl95)
+
+# list of models to predict
+model_ls <- extot
+
+# make predictions for each model for each dataset, save predictions as csv
+# and plot each model on one plot for all three datasets
+for (mod in 1:length(model_ls)) {
+  pred <- vector(mode="list", length=length(dfs))
+  for (df in 1:length(dfs)) {
+    full_preds <- make_predictions(dfs[[df]], m3a)#model_ls[[mod]])
+    write.csv(full_preds, paste0(path_out, "extot_m3a_", df, "_preds.csv"))
+    pred[[df]] <- full_preds
+  }
+  pdf(file=paste0(path_out, "m3a_extot_preds.pdf"))
+  print(ggplot() +
+          geom_point(data = expoptot, aes(x = Year, y = NoExSpec), col="black") +
+          geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec), col="red") +
+          geom_ribbon(data = pred[[1]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="red") +
+          geom_line(data = pred[[2]], aes(x = Year, y = NoExSpec), col="blue") +
+          geom_ribbon(data = pred[[2]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="blue") +
+          geom_line(data = pred[[3]], aes(x = Year, y = NoExSpec), col="green")) +
+          geom_ribbon(data = pred[[3]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="green") +
+          theme_bw()
+  dev.off()
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# set best model to use for predictions
+model <- m3a#extot[[4]]
+
+
+pred_2050 <- predict(model, popsl95, type = "raw")
 
 # finding the confidence intervals
-ci_2050 <- predict(m1, un_2050, se.fit=TRUE, type = "link")
-ci_2100 <- predict(m1, un_2100, se.fit=TRUE, type = "link")
 
-exp(ci_2050$fit - 2*ci_2050$se.fit)
-exp(ci_2050$fit + 2*ci_2050$se.fit)
+ci_2100 <- as.data.frame(predict(model, popsl95, se.fit=TRUE, type = "raw"))
+
+ci_2050 <- as.data.frame(predict(model$finalModel, popsl95, se.fit=TRUE, type = "link"))
+
+(ci_2050$fit - 2*ci_2050$se.fit)^2
+(ci_2050$fit + 2*ci_2050$se.fit)^2
+
 
 exp(ci_2100$fit - 2*ci_2100$se.fit)
 exp(ci_2100$fit + 2*ci_2100$se.fit)
 
 
-######## use negative binomial and quasipoisson since mean is not 
+
+# extract populations
+pops <- as.data.frame(dataset$Pop)
+names(pops) <- "Pop"
+
+# make precitions
+if (class(model)[1] == "train") {
+  preds <- predict(model, pops, type = "raw")
+} else {
+  preds <- predict(model, pops, type = "response")
+}
+
+# combine pop dataset with predictions
+preddf <- cbind(dataset, preds)
+names(preddf) <- c("Year", "Pop", "NoExSpec")
+
+# finding the confidence intervals
+if (class(model)[1] == "train") {
+  ci <- predict(model$finalModel, preddf, se.fit=TRUE, type = "link")
+} else {
+  ci <- predict(model, preddf, se.fit=TRUE, type = "link")
+}
+
+# lower limit
+cil <- (ci$fit - 2*ci$se.fit)^2
+# upper limit
+ciu <- (ci$fit + 2*ci$se.fit)^2
+
+# combine all data and confidence intervals for plotting
+fulldf <- cbind(dataset, preds, cil, ciu)
+names(fulldf) <- c("Year", "Pop", "NoExSpec", "UpperCI", "LowerCI")
+
+return(fulldf)
+
+pred <- vector(mode="list", length=length(dfs))
+for (df in 1:length(dfs)) {
+  full_preds <- make_predictions(dfs[[df]], model_ls[[mod]])
+  write.csv(full_preds, paste0(path_out, "extot_", mod, "_", df, "_preds.csv"))
+  pred[[df]] <- full_preds
+}
+pdf(file=paste0(path_out, mod, "_extot_preds.pdf"))
+print(ggplot() +
+        geom_point(data = expoptot, aes(x = Year, y = NoExSpec), col="black") +
+        geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec), col="red") +
+        geom_line(data = pred[[2]], aes(x = Year, y = NoExSpec), col="blue") +
+        geom_line(data = pred[[3]], aes(x = Year, y = NoExSpec), col="green"))
+dev.off()
+######## notes
+
+# use negative binomial and quasipoisson since mean is not 
 # equal to variance (overdispersion)
 # this is possibly due to clustering in space
 
@@ -224,49 +694,5 @@ exp(ci_2100$fit + 2*ci_2100$se.fit)
 # could look at rate of extinctions per year by dividing time periods accordingly...
 
 
-#########################################################################################
-########################### Plots for different scenarios ###############################
-
-
-years <- colnames(un_pred_full[2:ncol(un_pred_full)])
-years <- gsub("X", "", years)
-years <- as.numeric(years)
-
-years <- seq(2020, 2100, year_split)
-years_char <- as.character(years)
-years_char <- paste0("X", years_char)
-un10 <- un_pred_full[,which(names(un_pred_full) %in% years_char)]
-
-create_pred_df <- function(i) {
-  sub <- as.data.frame(t(un10[i,1:ncol(un10)]))
-  names(sub) <- "Pop"
-  pred_sub <- predict(m1, sub, type = "response")
-  predt_sub <- cbind(years, pred_sub, sub)
-  names(predt_sub) <- c("Year", "NoExSpec", "Pop")
-  
-  return(predt_sub)
-}
-
-l95 <- create_pred_df(1)
-med <- create_pred_df(3)
-u95 <- create_pred_df(5)
-
-expop_l95 <- rbind(expoptot, pred_mil2_df, l95)
-expop_med <- rbind(expoptot, pred_mil2_df, med)
-expop_u95 <- rbind(expoptot, pred_mil2_df, u95)
-
-# plot with predictions
-ggplot() +
-  geom_point(data = expop_l95, aes(x = Year, y = NoExSpec), col="blue") +
-  geom_point(data = expop_med, aes(x = Year, y = NoExSpec), col="red") +
-  geom_point(data = expop_u95, aes(x = Year, y = NoExSpec), col="black") +
-  geom_smooth(mapping = aes(x = Year, y = NoExSpec), data = expop_l95, 
-              method = "gam", method.args = list(family = "quasipoisson"), fullrange=TRUE, col="blue") +
-  geom_smooth(mapping = aes(x = Year, y = NoExSpec), data = expop_med, 
-              method = "gam", method.args = list(family = "quasipoisson"), fullrange=TRUE, col="red") +
-  geom_smooth(mapping = aes(x = Year, y = NoExSpec), data = expop_u95, 
-              method = "gam", method.args = list(family = "quasipoisson"), fullrange=TRUE, col="black") +
-  theme_bw()
-
-
 ## end of script
+
