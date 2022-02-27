@@ -25,22 +25,24 @@ library("gridExtra")
 #library("rnaturalearthhires")
 
 # select time name to analyse data from set time periods
-time_name <- "1460-2000_20y"
+time_name <- "1805-2000_5y"
 
 # set path to data and scripts
 path_data <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/r_data_objects/", time_name, "/")
 path_out <- paste0("~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/outputs/", time_name, "/")
 
 # load data
+# extinction data
 vertex <- readRDS(paste0(path_data, time_name, "_vertex.rds"))
 vertex_class <- readRDS(paste0(path_data, time_name, "_vertex_class.rds"))
 vertex_tot <- readRDS(paste0(path_data, time_name, "_vertex_tot.rds"))
 vertex_tot_noamph <- readRDS(paste0(path_data, time_name, "_noamph_vertex_tot.rds"))
 
-popdenchange <- readRDS(paste0(path_data, time_name, "_popden_change_tot.rds"))
+# population data
+poptot <- readRDS(paste0(path_data, time_name, "_pop_tot.rds"))
 
-expopden <- readRDS(paste0(path_data, time_name, "_expopden.rds"))
-expop <- readRDS(paste0(path_data, time_name, "_expop.rds"))
+# extinction/population data
+expop <- readRDS(paste0(path_data, time_name, "_expoptot.rds"))
 
 
 ##################################################################################
@@ -49,6 +51,8 @@ expop <- readRDS(paste0(path_data, time_name, "_expop.rds"))
 
 hist(vertex_tot$No_Ex_Spec_tot)
 hist(vertex_tot_noamph$No_Ex_Spec_tot)
+
+# we can see a rough Poisson distribution pattern here
 
 mean(vertex_tot$No_Ex_Spec_tot)
 var(vertex_tot$No_Ex_Spec_tot)
@@ -72,7 +76,7 @@ hist(vertex_noamph$EX.Last.seen.)
 barplot(vertex_tot$No_Ex_Spec_tot, vertex_tot$Year_Block_Var)
 plot(vertex_tot$Year_Block_Var, vertex_tot$No_Ex_Spec_tot)
 
-# plot extinctions with amphibians
+# plot extinctions without amphibians
 barplot(vertex_tot_noamph$No_Ex_Spec_tot, vertex_tot_noamph$Year_Block_Var)
 plot(vertex_tot_noamph$Year_Block_Var, vertex_tot_noamph$No_Ex_Spec_tot)
 
@@ -86,7 +90,7 @@ plot(vertex_tot_noamph$Year_Block_Var, vertex_tot_noamph$No_Ex_Spec_tot)
 
 # create plotting object for pop density data
 plot1 <- ggplot() +
-  geom_point(data = popdenchange, aes(x=Year, y=Prop_change_tot)) +
+  geom_point(data = poptot, aes(x=Year, y=Population)) +
   theme_bw()
 # create plotting object for total extinctions, split by vertebrate class
 plot2 <- ggplot() +
@@ -104,29 +108,23 @@ plot4 <- ggplot() +
 # plot above plot on a single grid
 grid.arrange(plot1, plot2, plot3, plot4, ncol=2) 
 
-
-ggplot(data = expopden, aes(x=Year, y=NoExSpec)) +
+# plot as bar chart
+ggplot(data = expop, aes(x=Year, y=NoExSpec)) +
   geom_bar(stat='identity') +
   theme_bw()
 
-ggplot(data = expop, aes(x=Year, y=PopDenChange)) +
-  geom_bar(stat='identity') +
-  theme_bw()
-
+# plot population
 ggplot() +
-  geom_point(data = expopden, aes(x=Year, y=PopDen)) +
+  geom_point(data = expop, aes(x=Year, y=Pop)) +
   theme_bw()
 
 
 #################################### Combined #########################################
 
 
+# plot populaion vs number of extinctions
 ggplot() +
-  geom_point(data = expopden, aes(x=PopDen, y=NoExSpec)) +
-  theme_bw()
-
-ggplot() +
-  geom_point(data = expop, aes(x=PopDenChange, y=NoExSpec)) +
+  geom_point(data = expop, aes(x=Pop, y=NoExSpec)) +
   theme_bw()
 
 
@@ -134,14 +132,9 @@ ggplot() +
 
 
 # calculate correlation between number of extinctions and change in population density
-cor(expop$NoExSpec, expop$PopDenChange)
+cor(expop$NoExSpec, expop$Pop)
 # plot correlations
 pairs(expop)
-
-# calculate correlation between number of extinctions and population density
-cor(expopden$NoExSpec, expopden$PopDen)
-# plot correlations
-pairs(expopden)
 
 
 ## end of script
