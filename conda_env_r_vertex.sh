@@ -41,6 +41,8 @@ conda install -c conda-forge r-tidyr=1.1.4 -y
 conda install -c conda-forge r-gridextra=2.3 -y
 conda install -c conda-forge r-spatialpack=0.3 -y 
 conda install -c conda-forge r-mass=7.3_55 -y
+conda install -c conda-forge r-car=3.0_12 -y
+conda install -c conda-forge r-mgcv=1.8_39 -y
 
 # remove any unused packages and caches after installations
 conda clean -a -y
