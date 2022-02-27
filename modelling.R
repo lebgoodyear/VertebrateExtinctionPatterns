@@ -390,7 +390,7 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
 
 # note outliers were chosen from the plots in explore_data.R
 # note correlation for 1805-2000 (5 years) was 0.76 so quite high (explore_data.R)
-# and correlation for 1710-2000 (10 years) was0.89 so very high (explore_data.R)
+# and correlation for 1710-2000 (10 years) was 0.89 so very high (explore_data.R)
 
 # set outliers depending on time period
 if (year_split == 10) {
@@ -412,7 +412,20 @@ extot_outpf <- run_models(expoptot, "Pop", "NoExSpec", outlierspf, "extot_outpf"
 
 # b) BY CLASS
 
+## Amphibians
 
+## Aves
+
+## Mammals
+
+## Reptiles
+
+
+# c) BY CONTINENT/ISLAND
+
+## Continent
+
+## Island
 
 
 ########################################################################################
@@ -538,10 +551,26 @@ make_predictions <- function(dataset, model) {
     ci <- predict(model, preddf, se.fit=TRUE, type = "link")
   }
   
-  # lower limit
-  cil <- (ci$fit - 2*ci$se.fit)^2
-  # upper limit
-  ciu <- (ci$fit + 2*ci$se.fit)^2
+  # calculate confidence intervals based on link function
+  if (exists(model$bestTune)) {
+    if (model$bestTune[[1]] == "sqrt") {
+      # lower limit
+      cil <- (ci$fit - 2*ci$se.fit)^2
+      # upper limit
+      ciu <- (ci$fit + 2*ci$se.fit)^2
+    }
+    if (model$bestTune[[1]] == "identity") {
+      # lower limit
+      cil <- ci$fit - 2*ci$se.fit
+      # upper limit
+      ciu <- ci$fit + 2*ci$se.fit
+    } 
+  } else {
+    # lower limit
+    cil <- exp(ci$fit - 2*ci$se.fit)
+    # upper limit
+    ciu <- exp(ci$fit + 2*ci$se.fit)
+  }
   
   # combine all data and confidence intervals for plotting
   fulldf <- cbind(dataset, preds, cil, ciu)
@@ -572,11 +601,11 @@ model_ls <- extot
 for (mod in 1:length(model_ls)) {
   pred <- vector(mode="list", length=length(dfs))
   for (df in 1:length(dfs)) {
-    full_preds <- make_predictions(dfs[[df]], m3a)#model_ls[[mod]])
-    write.csv(full_preds, paste0(path_out, "extot_m3a_", df, "_preds.csv"))
+    full_preds <- make_predictions(dfs[[df]], model_ls[[mod]])
+    write.csv(full_preds, paste0(path_out, "extot_", mod, "_", df, "_preds.csv"))
     pred[[df]] <- full_preds
   }
-  pdf(file=paste0(path_out, "m3a_extot_preds.pdf"))
+  pdf(file=paste0(path_out, mod, "_extot_preds.pdf"))
   print(ggplot() +
           geom_point(data = expoptot, aes(x = Year, y = NoExSpec), col="black") +
           geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec), col="red") +
@@ -591,7 +620,14 @@ for (mod in 1:length(model_ls)) {
 
 
 
-
+#### try running again to see if new confidence intervals work for extot_na data
+#### try for extot_outp and extot_outpf
+#### think of way to extract model comparison variables in csv for easy comparison
+#### maybe save different dataset models into different folders?
+#### make model list named list so we can extract model names and use in naming rather than numbers
+# oh and named datasets (u95, med, l95 rather than numbers again)
+#### once code is completed, subset data for class and cont/island and run for each different thing
+#### also run over the two different time period options
 
 
 
@@ -626,53 +662,6 @@ exp(ci_2100$fit - 2*ci_2100$se.fit)
 exp(ci_2100$fit + 2*ci_2100$se.fit)
 
 
-
-# extract populations
-pops <- as.data.frame(dataset$Pop)
-names(pops) <- "Pop"
-
-# make precitions
-if (class(model)[1] == "train") {
-  preds <- predict(model, pops, type = "raw")
-} else {
-  preds <- predict(model, pops, type = "response")
-}
-
-# combine pop dataset with predictions
-preddf <- cbind(dataset, preds)
-names(preddf) <- c("Year", "Pop", "NoExSpec")
-
-# finding the confidence intervals
-if (class(model)[1] == "train") {
-  ci <- predict(model$finalModel, preddf, se.fit=TRUE, type = "link")
-} else {
-  ci <- predict(model, preddf, se.fit=TRUE, type = "link")
-}
-
-# lower limit
-cil <- (ci$fit - 2*ci$se.fit)^2
-# upper limit
-ciu <- (ci$fit + 2*ci$se.fit)^2
-
-# combine all data and confidence intervals for plotting
-fulldf <- cbind(dataset, preds, cil, ciu)
-names(fulldf) <- c("Year", "Pop", "NoExSpec", "UpperCI", "LowerCI")
-
-return(fulldf)
-
-pred <- vector(mode="list", length=length(dfs))
-for (df in 1:length(dfs)) {
-  full_preds <- make_predictions(dfs[[df]], model_ls[[mod]])
-  write.csv(full_preds, paste0(path_out, "extot_", mod, "_", df, "_preds.csv"))
-  pred[[df]] <- full_preds
-}
-pdf(file=paste0(path_out, mod, "_extot_preds.pdf"))
-print(ggplot() +
-        geom_point(data = expoptot, aes(x = Year, y = NoExSpec), col="black") +
-        geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec), col="red") +
-        geom_line(data = pred[[2]], aes(x = Year, y = NoExSpec), col="blue") +
-        geom_line(data = pred[[3]], aes(x = Year, y = NoExSpec), col="green"))
-dev.off()
 ######## notes
 
 # use negative binomial and quasipoisson since mean is not 
