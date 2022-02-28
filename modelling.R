@@ -58,7 +58,9 @@ pop_full <- read.csv(paste0(path_rawdata, "population_past_future.csv"), strings
 names(pop_full)[4] <- "Pop"
 
 # define 3-fold cross validation with 3 repeats
-train_control <- trainControl(method="repeatedcv", number=5, repeats=5)
+train_control <- trainControl(method="repeatedcv", number=5, repeats=5, seeds=as.list(54:80))
+seq <- seq(54:(26*3**3))
+train_control_nb <- trainControl(method="repeatedcv", number=5, repeats=5, seeds=split(seq, ceiling(seq_along(seq)/3)))
 
 
 #####################################################################################
@@ -69,11 +71,12 @@ train_control <- trainControl(method="repeatedcv", number=5, repeats=5)
 # mean is not equal to variance so quasipoisson or negative binomial distributions must be used
 
 # Models used:
-# BASELINE and with CROSS-VALIDATION
+# BASELINE and with CROSS-VALIDATION fro GLMs
 # 1) mglm and mglmcv are GLMs using quasipoisson family with log link function
 # 2) mglmnb and mglmnbcv are negative binomial GLMs
-# 3) mgam and mgamcv are GAMs using quasipoisson family with log link function
-# 4) mgamnb and mgamnbcv are negative binomial GAMs
+# BASELINE only for GAMs (as difficult to use smoothers)
+# 3) mgam is a GAM using quasipoisson family with log link function
+# 4) mgamnb is a negative binomial GAM
 
 # all these models are combined into one function with outputs stored for comparison
 
@@ -92,6 +95,12 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
   # outliers must be vector containing outlying years or NA
   # output_name is string to save outputs under
   
+  # create directory to store the data for this time set
+  # first check if directory exists and if not, create it
+  ifelse(!dir.exists(file.path(paste0(path_out, output_name))), dir.create(file.path(paste0(path_out, output_name))), FALSE)
+  # set directory for results to be sent to
+  path_out_mod <- paste0(path_out, output_name, "/")
+  
   # create dataset without outliers
   if (is.na(outliers)) {
     df <- dataset
@@ -99,7 +108,7 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
   
   # set formula for model creation
   form <- as.formula(paste(y, '~', x))
-  forms <- as.formula(paste(y, '~', s(x)))
+  forms <- as.formula(paste0(y, ' ~ s(' , x, ')'))
   
   # set max iterations for negative binomial models
   maxset = 1000
@@ -108,39 +117,35 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
   # MODEL 1: Quasipoisson GLM
   
   
-  ## base
-  mglm <- glm(form, family=quasipoisson(link="log"), data=df)
-  r2_mglm <- with(summary(mglm), 1 - deviance/null.deviance) # calculate r^2 value
+  ## cross-validation for identity link
+  mglmcvid <- train(form,
+                  method = "glm",
+                  family = quasipoisson(link = "identity"),
+                  data=df,
+                  maxit = maxset,
+                  trControl=train_control)
   # save outputs
-  cat("\n\n Quasipoisson GLM for ", outliers, " outliers\n", 
-      capture.output(summary(mglm)), 
-      file=paste0(path_out, output_name, "_GLM.txt"), 
+  cat("\n\n Quasipoisson GLM (identity link) with cross-validation for ", outliers, " outliers\n", 
+      capture.output(summary(mglmcvid)), 
+      file=paste0(path_out_mod, output_name, "_GLM.txt"), 
       sep = "\n", append=TRUE)
-  cat("\n\nR^2", capture.output(r2_mglm), 
-      file=paste0(path_out, output_name, "_GLM.txt"), 
+  cat("\n\nCV summary\n", capture.output(print(mglmcvid)), 
+      file=paste0(path_out_mod, output_name, "_GLM.txt"), 
       sep = "\n", append=TRUE)
-  cat("\n\n\nAnova \n", capture.output(Anova(mglm)), 
-      file=paste0(path_out, output_name, "_GLM.txt"), 
-      sep = "\n", append=TRUE)
-  ## cross-validation
-  mglmcv <- train(form,
+  ## cross-validation for log link
+  mglmcvlog <- train(form,
               method = "glm",
               family = quasipoisson(link = "log"),
               data=df,
               maxit = maxset,
               trControl=train_control)
-              #control = glm.control(family=quasipoisson(link="log")))
-  r2_mglmcv <- with(summary(mglmcv), 1 - deviance/null.deviance) # calculate r^2 value
   # save outputs
-  cat("\n\n Quasipoisson GLM with cross-validation for ", outliers, " outliers\n", 
-      capture.output(summary(mglmcv)), 
-      file=paste0(path_out, output_name, "_GLM.txt"), 
+  cat("\n\n Quasipoisson GLM (log link) with cross-validation for ", outliers, " outliers\n", 
+      capture.output(summary(mglmcvlog)), 
+      file=paste0(path_out_mod, output_name, "_GLM.txt"), 
       sep = "\n", append=TRUE)
-  cat("\n\nR^2", capture.output(r2_mglmcv), 
-      file=paste0(path_out, output_name, "_GLM.txt"), 
-      sep = "\n", append=TRUE)
-  cat("\n\nCV summary\n", capture.output(print(mglmcv)), 
-      file=paste0(path_out, output_name, "_GLM.txt"), 
+  cat("\n\nCV summary\n", capture.output(print(mglmcvlog)), 
+      file=paste0(path_out_mod, output_name, "_GLM.txt"), 
       sep = "\n", append=TRUE)
   
   
@@ -148,102 +153,86 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
   
   
   ## base
-  mglmnb <- glm.nb(form, data=df, maxit=maxset)
+  mglmnb <- glm.nb(form, data=df, link="identity", maxit=maxset)
   r2_mglmnb <- with(summary(mglmnb), 1 - deviance/null.deviance) # calculate r^2 value
   # save outputs
   cat("\n\n Negative Binomial GLM for ", outliers, " outliers\n", 
       capture.output(summary(mglmnb)), 
-      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
       sep = "\n", append=TRUE)
   cat("\n\nR^2", capture.output(r2_mglmnb), 
-      file=paste0(path_out, output_name, "_GLMnb.txt"), 
-      sep = "\n", append=TRUE)
-  cat("\n\n\nAnova \n", capture.output(Anova(mglmnb)), 
-      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
       sep = "\n", append=TRUE)
   ## cross-validation
   mglmnbcv <- train(form, 
                method = "glm.nb", 
                data=df,
                maxit = maxset,
-               trControl=train_control)
+               trControl=train_control_nb)
   r2_mglmnbcv <- with(summary(mglmnbcv), 1 - deviance/null.deviance) # calculate r^2 value
   # save outputs
   cat("\n\n Negative Binomial GLM with cross-validation for ", outliers, " outliers\n", 
       capture.output(summary(mglmnbcv)), 
-      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
       sep = "\n", append=TRUE)
   cat("\n\nR^2", capture.output(r2_mglmnbcv), 
-      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
       sep = "\n", append=TRUE)
   cat("\n\nCV summary\n", capture.output(print(mglmnbcv)), 
-      file=paste0(path_out, output_name, "_GLMnb.txt"), 
+      file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
       sep = "\n", append=TRUE)
         
   
   # MODEL 3: Quasipoisson GAM
   
   
-  ## base
-  mgam <- gam(form, family=quasipoisson(link="log"), data=df)
-  # save outputs
-  cat("\n\n Quasipoisson GAM for ", outliers, " outliers\n", 
-      capture.output(summary(mgam)), 
-      file=paste0(path_out, output_name, "_GAM.txt"), 
-      sep = "\n", append=TRUE)
-  ## cross-validation
-  mgamcv <- train(form, 
-               method = "gam", 
-               family=quasipoisson(link="log"),
-               data=df,
-               maxit = maxset,
-               trControl=train_control)
-  # save outputs
-  cat("\n\n Quasipoisson GAM with cross-validation for ", outliers, " outliers\n", 
-      capture.output(summary(mgamcv)), 
-      file=paste0(path_out, output_name, "_GAM.txt"), 
-      sep = "\n", append=TRUE)
-  cat("\n\nCV summary\n", capture.output(print(mgamcv)), 
-      file=paste0(path_out, output_name, "_GAM.txt"), 
-      sep = "\n", append=TRUE)
+  # ## base
+  # mgam <- gam(forms, family=quasipoisson(link="log"), data=df)
+  # # save outputs
+  # cat("\n\n Quasipoisson GAM for ", outliers, " outliers\n", 
+  #     capture.output(summary(mgam)), 
+  #     file=paste0(path_out_mod, output_name, "_GAM.txt"), 
+  #     sep = "\n", append=TRUE)
     
     
   # MODEL 4: Negative Binomial GAM
   
   
-  ## base
-  mgamnb <- gam(form, family=nb(), data=df)
+  # ## base
+  # mgamnb <- gam(forms, family=nb(), data=df)
   # save outputs
-  cat("\n\n Negative Binomial GAM for ", outliers, " outliers\n", 
-      capture.output(summary(mgamnb)), 
-      file=paste0(path_out, output_name, "_GAMnb.txt"), 
-      sep = "\n", append=TRUE)
-  ## cross-validation
-  mgamnbcv <- train(form, 
-               method = "gam", 
-               family = nb(),
-               data=df,
-               maxit = maxset,
-               trControl=train_control)
-  # save outputs
-  cat("\n\n Negative Binomial GAM with cross-validation for ", outliers, " outliers\n", 
-      capture.output(summary(mgamnbcv)), 
-      file=paste0(path_out, output_name, "_GAMnb.txt"), 
-      sep = "\n", append=TRUE)
-  cat("\n\nCV summary\n", capture.output(print(mgamnbcv)), 
-      file=paste0(path_out, output_name, "_GAMnb.txt"), 
-      sep = "\n", append=TRUE)
-  
+  # cat("\n\n Negative Binomial GAM for ", outliers, " outliers\n", 
+  #    capture.output(summary(mgamnb)), 
+  #    file=paste0(path_out_mod, output_name, "_GAMnb.txt"), 
+  #    sep = "\n", append=TRUE)
   
   # save models as list
-  models <- list(mglm = mglm,
-                 mglmcv = mglmcv,
-                 mglmnb = mglmnb,
-                 mglmnbcv = mglmnbcv,
-                 mgam = mgam,
-                 mgamcv = mgamcv,
-                 mgamnb = mgamcv,
-                 mgamnbcv = mgamnbcv)
+  models <- list("mglmcvid" = mglmcvid,
+                 "mglmcvlog" = mglmcvlog,
+                 #mglmnb = mglmnb,
+                 "mglmnbcv" = mglmnbcv)
+                 #mgam = mgam,
+                 #mgamnb = mgamnb)
+  
+  # generate csv of RMSE and R^2 values
+  metrics <- data.frame(matrix(ncol=3,nrow=length(models)))
+  names(metrics) <- c("Model", "RMSE", "R^2")
+  for (model in 1:length(models)) {
+    metrics$Model[model] <- names(models)[[model]]
+    if (!is.null(models[[model]]$results$parameter)) {
+      metrics$RMSE[model] <- models[[model]]$results[[2]]
+      metrics$`R^2`[[model]] <- models[[model]]$results[[3]]
+    } else {
+      metrics$RMSE[model] <- models[[model]]$results[[2]][[which(models[[model]]$results$link==models[[model]]$finalModel$family$link)]]
+      metrics$`R^2`[[model]] <- models[[model]]$results[[3]][[which(models[[model]]$results$link==models[[model]]$finalModel$family$link)]]
+    }
+  }
+  
+  # save as csv
+  write.csv(metrics, paste0(path_out_mod, "model_comparison.csv"))
+  
+  # add extra nb model to view graphically
+  models[["mglmnb"]] = mglmnb
   
   # return models
   return(models)
@@ -295,19 +284,19 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
 # set outliers depending on time period
 if (year_split == 10) {
   outliersp <- c(1900)
-  outlierspf <- c(1900, 2000)
+  outliersr <- c(1900, 2000)
 } 
 if (year_split == 5) {
   outliersp <- c(1900, 1955)
-  outlierspf <- c(1900, 1955, 1995, 2000)
+  outliersr <- c(1900, 1955, 1995, 2000)
 }
 
 
 # a) TOTAL EXTINCTIONS
 
-extot <- run_models(expoptot, "Pop", "NoExSpec", NA, "extot_na")
+extot_outna <- run_models(expoptot, "Pop", "NoExSpec", NA, "extot_outna")
 extot_outp <- run_models(expoptot, "Pop", "NoExSpec", outliersp, "extot_outp")
-extot_outpf <- run_models(expoptot, "Pop", "NoExSpec", outlierspf, "extot_outpf")
+#extot_outr <- run_models(expoptot, "Pop", "NoExSpec", outliersr, "extot_outr")
 
 
 # b) BY CLASS
@@ -514,74 +503,55 @@ popsl95 <- process_data(pop_full, year_split, "Lower 95")
 dfs <- list(u95=popsu95, med=popsmed, l95=popsl95)
 
 # list of models to predict
-model_ls <- extot_outp
+model_ls <- list("extot_outna" = extot_outna, "extot_outp" = extot_outp) #extot_outpf = extot_outpf)
 
 # make predictions for each model for each dataset, save predictions as csv
 # and plot each model on one plot for all three datasets
-for (mod in 1:length(model_ls)) {
-  pred <- vector(mode="list", length=length(dfs))
-  for (df in 1:length(dfs)) {
-    full_preds <- make_predictions(dfs[[df]], model_ls[[mod]])
-    write.csv(full_preds, paste0(path_out, "extot_", names(model_ls)[mod], "_", names(dfs)[df], "_preds.csv"))
-    pred[[df]] <- full_preds
+for (ds in (1:length(model_ls))) {
+  # set directory for results to be sent to
+  path_out_mod <- paste0(path_out, names(model_ls)[[ds]], "/")
+  # set up correct data to plot
+  if (grepl("na", names(model_ls)[[ds]], fixed=TRUE) == TRUE) {
+    dataset <- expoptot
   }
-  pdf(file=paste0(path_out, names(model_ls)[mod], "_extot_preds.pdf"))
-  print(ggplot() +
-          geom_point(data = expoptot, aes(x = Year, y = NoExSpec), col="black") +
-          geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec), col="red") +
-          geom_ribbon(data = pred[[1]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="red") +
-          geom_line(data = pred[[2]], aes(x = Year, y = NoExSpec), col="blue") +
-          geom_ribbon(data = pred[[2]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="blue") +
-          geom_line(data = pred[[3]], aes(x = Year, y = NoExSpec), col="green") +
-          geom_ribbon(data = pred[[3]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="green") +
-          theme_bw())
-  dev.off()
+  if (grepl("outp", names(model_ls)[[ds]], fixed = TRUE) == TRUE) {
+    dataset <- expoptot[which(!(expoptot$Year %in% outliersp)),]
+  }
+  if (grepl("outr", names(model_ls)[[ds]], fixed = TRUE) == TRUE) {
+    dataset <- expoptot[which(!((expoptot$Year %in% outliersr))),]
+  }
+  # run over all models in dataset
+  for (mod in 1:length(model_ls[[ds]])) {
+    pred <- vector(mode="list", length=length(dfs))
+    for (df in 1:length(dfs)) {
+      full_preds <- make_predictions(dfs[[df]], model_ls[[ds]][[mod]])
+      write.csv(full_preds, paste0(path_out_mod, names(model_ls)[[ds]], names(model_ls[[ds]])[mod], "_", names(dfs)[[df]], "_preds.csv"))
+      pred[[df]] <- full_preds
+    }
+    pdf(file=paste0(path_out_mod, names(model_ls[[ds]])[mod], "_", names(model_ls)[[ds]], "_preds.pdf"))
+    print(ggplot() +
+            geom_point(data = dataset, aes(x = Year, y = NoExSpec), col="black") +
+            geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec), col="red") +
+            geom_ribbon(data = pred[[1]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="red") +
+            geom_line(data = pred[[2]], aes(x = Year, y = NoExSpec), col="blue") +
+            geom_ribbon(data = pred[[2]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="blue") +
+            geom_line(data = pred[[3]], aes(x = Year, y = NoExSpec), col="green") +
+            geom_ribbon(data = pred[[3]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="green") +
+            theme_bw())
+    dev.off()
+  }
 }
 
 
-
-#### try running again to see if new confidence intervals work for extot_na data
-#### try for extot_outp and extot_outpf
+#### confidence intervals work for GAMs??!?!
 #### think of way to extract model comparison variables in csv for easy comparison
-#### maybe save different dataset models into different folders?
 
 #### once code is completed, subset data for class and cont/island and run for each different thing
 #### also run over the two different time period options
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-# set best model to use for predictions
-model <- m3a#extot[[4]]
-
-
-pred_2050 <- predict(model, popsl95, type = "raw")
-
-# finding the confidence intervals
-
-ci_2100 <- as.data.frame(predict(model, popsl95, se.fit=TRUE, type = "raw"))
-
-ci_2050 <- as.data.frame(predict(model$finalModel, popsl95, se.fit=TRUE, type = "link"))
-
-(ci_2050$fit - 2*ci_2050$se.fit)^2
-(ci_2050$fit + 2*ci_2050$se.fit)^2
-
-
-exp(ci_2100$fit - 2*ci_2100$se.fit)
-exp(ci_2100$fit + 2*ci_2100$se.fit)
-
-
 ######## notes
+
 
 # use negative binomial and quasipoisson since mean is not 
 # equal to variance (overdispersion)
