@@ -27,11 +27,11 @@ library("rnaturalearthhires")
 # year will be final year of interval
 # e.g. c(1700, 1750, 1800) will be 1701-1750 and 1751-1800
 #time_periods <- c(1700, 1800, 1900, 2000)
-time_periods <- seq(1710, 2000, 10)
-#time_periods <- seq(1805, 2000, 5)
+#time_periods <- seq(1710, 2000, 10)
+time_periods <- seq(1805, 2000, 5)
 
 # set name for time periods for output names
-time_name <- "1810-2000_10y"
+time_name <- "1805-2000_5y"
 
 # set path to data and scripts
 path_data <- "~/Dropbox/luke/documents/academia/phd/papers/2022_global_extinctions/data/raw_data/"
@@ -96,6 +96,11 @@ saveRDS(vertex, paste0(path_out, time_name, "_vertex.rds"))
 # sum over required columns
 # note .drop=FALSE means any 0 values are kept in the summarised dataframe
 vertex_block <- vertex %>% group_by(Class.x, Year_Block_Var, Class_Num, .drop=FALSE) %>% summarize(No_Ex_Spec = n())
+vertexam <- vertex_block[which(vertex_block$Class.x == "Amphibia"),]
+vertexav <- vertex_block[which(vertex_block$Class.x == "AVES"),]
+vertexma <- vertex_block[which(vertex_block$Class.x == "MAMMALIA"),]
+vertexre <- vertex_block[which(vertex_block$Class.x == "Reptilia"),]
+
 # include island/continent in summary
 vertex_block_contis <- vertex %>% group_by(Class.x, Cont.2..Island.1., Year_Block_Var, Class_Num, .drop=FALSE) %>% summarize(No_Ex_Spec = n())
 # total extinctions per year
@@ -108,6 +113,10 @@ vertex_noamph_tot <- vertex_noamph %>% group_by(Year_Block_Var, .drop=FALSE) %>%
 
 # save results to import into later scripts
 saveRDS(vertex_block, paste0(path_out, time_name, "_vertex_class.rds"))
+saveRDS(vertexam, paste0(path_out, time_name, "_vertex_amph.rds"))
+saveRDS(vertexav, paste0(path_out, time_name, "_vertex_aves.rds"))
+saveRDS(vertexma, paste0(path_out, time_name, "_vertex_mamm.rds"))
+saveRDS(vertexre, paste0(path_out, time_name, "_vertex_rept.rds"))
 saveRDS(vertex_block_contis, paste0(path_out, time_name, "_vertex_contis.rds"))
 saveRDS(vertex_tot, paste0(path_out, time_name, "_vertex_tot.rds"))
 saveRDS(vertex_noamph, paste0(path_out, time_name, "_noamph_vertex_class.rds"))
@@ -250,6 +259,42 @@ for (i in (1:nrow(vertex0_noamph))) {
   }
 }
 
+vertex0am <- data.frame(time_periods)
+vertex0am$NoExSpec <- 0
+# add missing time periods with 0 extinctions
+for (i in (1:nrow(vertex0am))) {
+  if (length(vertexam$No_Ex_Spec[which(vertexam$Year_Block_Var == vertex0am[i,1])]) > 0) {
+    vertex0am$NoExSpec[i] <- vertexam$No_Ex_Spec[which(vertexam$Year_Block_Var == vertex0am[i,1])]
+  }
+}
+
+vertex0av <- data.frame(time_periods)
+vertex0av$NoExSpec <- 0
+# add missing time periods with 0 extinctions
+for (i in (1:nrow(vertex0av))) {
+  if (length(vertexav$No_Ex_Spec[which(vertexav$Year_Block_Var == vertex0av[i,1])]) > 0) {
+    vertex0av$NoExSpec[i] <- vertexav$No_Ex_Spec[which(vertexav$Year_Block_Var == vertex0av[i,1])]
+  }
+}
+
+vertex0ma <- data.frame(time_periods)
+vertex0ma$NoExSpec <- 0
+# add missing time periods with 0 extinctions
+for (i in (1:nrow(vertex0ma))) {
+  if (length(vertexma$No_Ex_Spec[which(vertexma$Year_Block_Var == vertex0ma[i,1])]) > 0) {
+    vertex0ma$NoExSpec[i] <- vertexma$No_Ex_Spec[which(vertexma$Year_Block_Var == vertex0ma[i,1])]
+  }
+}
+
+vertex0re <- data.frame(time_periods)
+vertex0re$NoExSpec <- 0
+# add missing time periods with 0 extinctions
+for (i in (1:nrow(vertex0re))) {
+  if (length(vertexre$No_Ex_Spec[which(vertexre$Year_Block_Var == vertex0re[i,1])]) > 0) {
+    vertex0re$NoExSpec[i] <- vertexre$No_Ex_Spec[which(vertexre$Year_Block_Var == vertex0re[i,1])]
+  }
+}
+
 # combine total extinctions and total pop den changes into one dataframe
 #expop <- merge(vertex_tot, prop_change_tot, by.x = "Year_Block_Var", by.y = "Year")
 #names(expop) <- c("Year", "NoExSpec", "PopDenChange")
@@ -274,6 +319,22 @@ names(expoptot) <- c("Year", "NoExSpec", "Pop")
 expoptot_noamph <- merge(vertex0_noamph, pop_tot, by.x = "time_periods", by.y = "Year")
 names(expoptot_noamph) <- c("Year", "NoExSpec", "Pop")
 
+# combine amphibian extinctions and total population into one dataframe
+expopam <- merge(vertex0am, pop_tot, by.x = "time_periods", by.y = "Year")
+names(expopam) <- c("Year", "NoExSpec", "Pop")
+
+# combine aves extinctions and total population into one dataframe
+expopav <- merge(vertex0av, pop_tot, by.x = "time_periods", by.y = "Year")
+names(expopav) <- c("Year", "NoExSpec", "Pop")
+
+# combine mammal extinctions and total population into one dataframe
+expopma <- merge(vertex0ma, pop_tot, by.x = "time_periods", by.y = "Year")
+names(expopma) <- c("Year", "NoExSpec", "Pop")
+
+# combine reptile extinctions and total population into one dataframe
+expopre <- merge(vertex0re, pop_tot, by.x = "time_periods", by.y = "Year")
+names(expopre) <- c("Year", "NoExSpec", "Pop")
+
 # save results to import into later scripts
 #saveRDS(expop, paste0(path_out, time_name, "_expop.rds"))
 #saveRDS(expop_noamph, paste0(path_out, time_name, "_expop_noamph.rds"))
@@ -281,6 +342,10 @@ names(expoptot_noamph) <- c("Year", "NoExSpec", "Pop")
 #saveRDS(expopden_noamph, paste0(path_out, time_name, "_expopden_noamph.rds"))
 saveRDS(expoptot, paste0(path_out, time_name, "_expoptot.rds"))
 saveRDS(expoptot_noamph, paste0(path_out, time_name, "_expoptot_noamph.rds"))
+saveRDS(expopam, paste0(path_out, time_name, "_expopam.rds"))
+saveRDS(expopav, paste0(path_out, time_name, "_expopav.rds"))
+saveRDS(expopma, paste0(path_out, time_name, "_expopma.rds"))
+saveRDS(expopre, paste0(path_out, time_name, "_expopre.rds"))
 
 
 ## end of script
