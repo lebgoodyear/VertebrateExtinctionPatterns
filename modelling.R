@@ -21,6 +21,11 @@ rm(list=ls())
 # load required packages
 library("dplyr")
 library("ggplot2")
+theme_set(theme_bw())
+theme_update(panel.grid.major = element_blank(), 
+             panel.grid.minor = element_blank(),
+             panel.border=element_blank(),
+             axis.line = element_line(colour = "black"))
 library("gridExtra")
 library("MASS") # negative binomial GLM
 library("car") # Anova() for a model
@@ -49,6 +54,11 @@ path_out <- paste0(path_out_temp, time_name, "/")
 # load data
 # extinction/population data
 expoptot <- readRDS(paste0(path_data, time_name, "_expoptot.rds"))
+# by class
+expopam <- readRDS(paste0(path_data, time_name, "_expopam.rds"))
+expopav <- readRDS(paste0(path_data, time_name, "_expopav.rds"))
+expopma <- readRDS(paste0(path_data, time_name, "_expopma.rds"))
+expopre <- readRDS(paste0(path_data, time_name, "_expopre.rds"))
 # un population prediction data
 un_pred_full <- read.csv(paste0(path_rawdata, "un_pop_pred_world.csv"))
 # un data is in 1000s so need to multiply by 1000
@@ -269,7 +279,7 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
 
 
 # function will be run over:
-# a) TOTAL EXTINCTIONS, b) EACH CLASS SEPARATELY, AND c) ISLAND/CONTINENT
+# a) TOTAL EXTINCTIONS AND b) EACH CLASS SEPARATELY
 # 1) 1805-2000, split by 5 years
 # 2) 1805-2000, split by 5 years, with 1900 and 1955 outliers removed
 # 3) 1805-2000, split by 5 years, with 1900, 1955 outliers removed and 1995, 2000 removed to remove downward trend in GAMs
@@ -302,19 +312,21 @@ extot_outp <- run_models(expoptot, "Pop", "NoExSpec", outliersp, "extot_outp")
 # b) BY CLASS
 
 ## Amphibians
+expopam_outna <- run_models(expopam, "Pop", "NoExSpec", NA, "expopam_outna")
+expopam_outp <- run_models(expopam, "Pop", "NoExSpec", outliersp, "expopam_outp")
 
 ## Aves
+expopav_outna <- run_models(expopav, "Pop", "NoExSpec", NA, "expopav_outna")
+expopav_outp <- run_models(expopav, "Pop", "NoExSpec", outliersp, "expopav_outp")
 
 ## Mammals
+expopma_outna <- run_models(expopma, "Pop", "NoExSpec", NA, "expopma_outna")
+expopma_outp <- run_models(expopma, "Pop", "NoExSpec", outliersp, "expopma_outp")
 
 ## Reptiles
+expopre_outna <- run_models(expopre, "Pop", "NoExSpec", NA, "expopre_outna")
+expopre_outp <- run_models(expopre, "Pop", "NoExSpec", outliersp, "expopre_outp")
 
-
-# c) BY CONTINENT/ISLAND
-
-## Continent
-
-## Island
 
 
 ########################################################################################
@@ -499,11 +511,14 @@ popsu95 <- process_data(pop_full, year_split, "Upper 95")
 popsmed <- process_data(pop_full, year_split, "Median")
 popsl95 <- process_data(pop_full, year_split, "Lower 95")
 
-# create predictions for each model
+# create list of datasets
 dfs <- list(u95=popsu95, med=popsmed, l95=popsl95)
 
 # list of models to predict
-model_ls <- list("extot_outna" = extot_outna, "extot_outp" = extot_outp) #extot_outpf = extot_outpf)
+model_ls <- list("expopav_outna" = expopav_outna, "expopav_outp" = expopav_outp,
+                 "expopre_outna" = expopre_outna, "expopre_outp" = expopre_outp)
+
+plot_data <- list(expopav, expopav, expopre, expopre)
 
 # make predictions for each model for each dataset, save predictions as csv
 # and plot each model on one plot for all three datasets
@@ -512,32 +527,42 @@ for (ds in (1:length(model_ls))) {
   path_out_mod <- paste0(path_out, names(model_ls)[[ds]], "/")
   # set up correct data to plot
   if (grepl("na", names(model_ls)[[ds]], fixed=TRUE) == TRUE) {
-    dataset <- expoptot
+    dataset <- plot_data[[ds]]
   }
   if (grepl("outp", names(model_ls)[[ds]], fixed = TRUE) == TRUE) {
-    dataset <- expoptot[which(!(expoptot$Year %in% outliersp)),]
+    dataset <- plot_data[[ds]][which(!(plot_data[[ds]]$Year %in% outliersp)),]
   }
   if (grepl("outr", names(model_ls)[[ds]], fixed = TRUE) == TRUE) {
-    dataset <- expoptot[which(!((expoptot$Year %in% outliersr))),]
+    dataset <- plot_data[[ds]][which(!((plot_data[[ds]]$Year %in% outliersr))),]
   }
   # run over all models in dataset
   for (mod in 1:length(model_ls[[ds]])) {
     pred <- vector(mode="list", length=length(dfs))
     for (df in 1:length(dfs)) {
       full_preds <- make_predictions(dfs[[df]], model_ls[[ds]][[mod]])
-      write.csv(full_preds, paste0(path_out_mod, names(model_ls)[[ds]], names(model_ls[[ds]])[mod], "_", names(dfs)[[df]], "_preds.csv"))
+      write.csv(full_preds, paste0(path_out_mod, names(model_ls)[[ds]], "_", names(model_ls[[ds]])[mod], "_", names(dfs)[[df]], "_preds.csv"))
       pred[[df]] <- full_preds
     }
-    pdf(file=paste0(path_out_mod, names(model_ls[[ds]])[mod], "_", names(model_ls)[[ds]], "_preds.pdf"))
+    pdf(file=paste0(path_out_mod, names(model_ls[[ds]])[mod], "_", names(model_ls)[[ds]], "_preds.pdf"), width=10, height=7)
     print(ggplot() +
-            geom_point(data = dataset, aes(x = Year, y = NoExSpec), col="black") +
-            geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec), col="red") +
-            geom_ribbon(data = pred[[1]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="red") +
-            geom_line(data = pred[[2]], aes(x = Year, y = NoExSpec), col="blue") +
-            geom_ribbon(data = pred[[2]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="blue") +
-            geom_line(data = pred[[3]], aes(x = Year, y = NoExSpec), col="green") +
-            geom_ribbon(data = pred[[3]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2, fill="green") +
-            theme_bw())
+            geom_point(data = dataset, aes(x = Year, y = NoExSpec), colour="black") +
+            geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec, colour="Upper 95% Population Prediction Interval")) +
+            geom_ribbon(data = pred[[1]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.15) +
+            geom_line(data = pred[[2]], aes(x = Year, y = NoExSpec, colour="Median Population Prediction")) +
+            geom_ribbon(data = pred[[2]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2) +
+            geom_line(data = pred[[3]], aes(x = Year, y = NoExSpec, colour="Lower 95% Population Prediction Interval")) +
+            geom_ribbon(data = pred[[3]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.15) +
+            labs(y=paste0("Number of extinct species per ", year_split, " 5 year period")) +
+            scale_color_manual(name="Extinctions based on UN Human Population Predictions",
+                               breaks=c("Lower 95% Population Prediction Interval", 
+                                        "Median Population Prediction", 
+                                        "Upper 95% Population Prediction Interval"),
+                               values=c("Lower 95% Population Prediction Interval"="darkgreen", 
+                                        "Median Population Prediction"="blue", 
+                                        "Upper 95% Population Prediction Interval"="red")) +
+            scale_x_continuous(limits=c(time_periods[1]-year_split,2100), expand=c(0,0)) +
+            theme(legend.position = c(0.3, 0.8)) +
+            theme(plot.margin = margin(0.5,1,0.5,0.5, "cm")))
     dev.off()
   }
 }
