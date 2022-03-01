@@ -132,7 +132,8 @@ ggplot() +
 
 
 # calculate correlation between number of extinctions and change in population density
-cor(expop$NoExSpec, expop$Pop)
+corr <- cor.test(expop$NoExSpec, expop$Pop)
+cat(capture.output(corr), file=paste0(path_out, "correlations.csv"))
 # plot correlations
 pairs(expop)
 
