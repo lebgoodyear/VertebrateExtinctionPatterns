@@ -28,8 +28,8 @@ theme_update(panel.grid.major = element_blank(),
              axis.line = element_line(colour = "black"))
 library("gridExtra")
 library("MASS") # negative binomial GLM
-library("car") # Anova() for a model
-library("mgcv") # for gam
+#library("car") # Anova() for a model
+#library("mgcv") # for gam
 library("caret") # for cross validation
 
 # set seed for reproducibility
@@ -312,20 +312,20 @@ extot_outp <- run_models(expoptot, "Pop", "NoExSpec", outliersp, "extot_outp")
 # b) BY CLASS
 
 ## Amphibians
-expopam_outna <- run_models(expopam, "Pop", "NoExSpec", NA, "expopam_outna")
-expopam_outp <- run_models(expopam, "Pop", "NoExSpec", outliersp, "expopam_outp")
-
-## Aves
-expopav_outna <- run_models(expopav, "Pop", "NoExSpec", NA, "expopav_outna")
-expopav_outp <- run_models(expopav, "Pop", "NoExSpec", outliersp, "expopav_outp")
-
-## Mammals
-expopma_outna <- run_models(expopma, "Pop", "NoExSpec", NA, "expopma_outna")
-expopma_outp <- run_models(expopma, "Pop", "NoExSpec", outliersp, "expopma_outp")
-
-## Reptiles
-expopre_outna <- run_models(expopre, "Pop", "NoExSpec", NA, "expopre_outna")
-expopre_outp <- run_models(expopre, "Pop", "NoExSpec", outliersp, "expopre_outp")
+# expopam_outna <- run_models(expopam, "Pop", "NoExSpec", NA, "expopam_outna")
+# expopam_outp <- run_models(expopam, "Pop", "NoExSpec", outliersp, "expopam_outp")
+# 
+# ## Aves
+# expopav_outna <- run_models(expopav, "Pop", "NoExSpec", NA, "expopav_outna")
+# expopav_outp <- run_models(expopav, "Pop", "NoExSpec", outliersp, "expopav_outp")
+# 
+# ## Mammals
+# expopma_outna <- run_models(expopma, "Pop", "NoExSpec", NA, "expopma_outna")
+# expopma_outp <- run_models(expopma, "Pop", "NoExSpec", outliersp, "expopma_outp")
+# 
+# ## Reptiles
+# expopre_outna <- run_models(expopre, "Pop", "NoExSpec", NA, "expopre_outna")
+# expopre_outp <- run_models(expopre, "Pop", "NoExSpec", outliersp, "expopre_outp")
 
 
 
@@ -515,10 +515,9 @@ popsl95 <- process_data(pop_full, year_split, "Lower 95")
 dfs <- list(u95=popsu95, med=popsmed, l95=popsl95)
 
 # list of models to predict
-model_ls <- list("expopav_outna" = expopav_outna, "expopav_outp" = expopav_outp,
-                 "expopre_outna" = expopre_outna, "expopre_outp" = expopre_outp)
+model_ls <- list("extot_outna" = extot_outna, "extot_outp" = extot_outp)
 
-plot_data <- list(expopav, expopav, expopre, expopre)
+plot_data <- list(expoptot, expoptot)
 
 # make predictions for each model for each dataset, save predictions as csv
 # and plot each model on one plot for all three datasets
@@ -545,12 +544,15 @@ for (ds in (1:length(model_ls))) {
     }
     pdf(file=paste0(path_out_mod, names(model_ls[[ds]])[mod], "_", names(model_ls)[[ds]], "_preds.pdf"), width=10, height=7)
     print(ggplot() +
-            geom_point(data = dataset, aes(x = Year, y = NoExSpec), colour="black") +
+            geom_point(data = expoptot, aes(x = Year, y = NoExSpec), colour="black") +
             geom_line(data = pred[[1]], aes(x = Year, y = NoExSpec, colour="Upper 95% Population Prediction Interval")) +
+            #geom_point(data = pred[[1]], aes(x = Year, y = NoExSpec, colour="Upper 95% Population Prediction Interval")) +
             geom_ribbon(data = pred[[1]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.15) +
             geom_line(data = pred[[2]], aes(x = Year, y = NoExSpec, colour="Median Population Prediction")) +
+            #geom_point(data = pred[[2]], aes(x = Year, y = NoExSpec, colour="Median Population Prediction")) +
             geom_ribbon(data = pred[[2]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.2) +
             geom_line(data = pred[[3]], aes(x = Year, y = NoExSpec, colour="Lower 95% Population Prediction Interval")) +
+            #geom_point(data = pred[[3]], aes(x = Year, y = NoExSpec, colour="Lower 95% Population Prediction Interval")) +
             geom_ribbon(data = pred[[3]], aes(x = Year, ymin=LowerCI, ymax=UpperCI), alpha=0.15) +
             labs(y=paste0("Number of extinct species per ", year_split, " 5 year period")) +
             scale_color_manual(name="Extinctions based on UN Human Population Predictions",
