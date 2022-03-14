@@ -43,6 +43,8 @@ conda install -c conda-forge r-spatialpack=0.3 -y
 conda install -c conda-forge r-mass=7.3_55 -y
 conda install -c conda-forge r-car=3.0_12 -y
 conda install -c conda-forge r-mgcv=1.8_39 -y
+conda install -c conda-forge r-kendall=2.2 -y
+conda install -c conda-forge r-pscl=1.5.5 -y
 
 # remove any unused packages and caches after installations
 conda clean -a -y
