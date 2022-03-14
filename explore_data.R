@@ -49,11 +49,13 @@ expop <- readRDS(paste0(path_data, time_name, "_expoptot.rds"))
 ######################### Extinction data only ###################################
 
 
+# view distribution of number of extinctions
 hist(vertex_tot$No_Ex_Spec_tot)
 hist(vertex_tot_noamph$No_Ex_Spec_tot)
 
 # we can see a rough Poisson distribution pattern here
 
+# view mean and variance
 mean(vertex_tot$No_Ex_Spec_tot)
 var(vertex_tot$No_Ex_Spec_tot)
 
@@ -88,7 +90,7 @@ plot(vertex_tot_noamph$Year_Block_Var, vertex_tot_noamph$No_Ex_Spec_tot)
 ######################## Separate by year block #########################################
 
 
-# create plotting object for pop density data
+# create plotting object for pop data
 plot1 <- ggplot() +
   geom_point(data = poptot, aes(x=Year, y=Population)) +
   theme_bw()
@@ -122,7 +124,7 @@ ggplot() +
 #################################### Combined #########################################
 
 
-# plot populaion vs number of extinctions
+# plot population vs number of extinctions
 ggplot() +
   geom_point(data = expop, aes(x=Pop, y=NoExSpec)) +
   theme_bw()

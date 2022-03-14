@@ -5,7 +5,7 @@
 
 # Author: Luke Goodyear (lgoodyear01@qub.ac.uk)
 # Created: Jan 2022
-# Last updated: Feb 2022
+# Last updated: Mar 2022
 
 # clear workspace
 rm(list=ls())
@@ -241,54 +241,68 @@ saveRDS(prop_change_tot, paste0(path_out, time_name, "_popden_change_tot.rds"))
 ###################### Combine vertex and population datasets ###########################
 
 
+# combine all extinction data with human population data
 vertex0 <- data.frame(time_periods)
 vertex0$NoExSpec <- 0
 # add missing time periods with 0 extinctions
+# set non-zero extinctions to appropriate time period
 for (i in (1:nrow(vertex0))) {
   if (length(vertex_tot$No_Ex_Spec_tot[which(vertex_tot$Year_Block_Var == vertex0[i,1])]) > 0) {
     vertex0$NoExSpec[i] <- vertex_tot$No_Ex_Spec_tot[which(vertex_tot$Year_Block_Var == vertex0[i,1])]
   }
 }
 
+# combine extinction data without amphibians with human population data
 vertex0_noamph <- data.frame(time_periods)
 vertex0_noamph$NoExSpec <- 0
 # add missing time periods with 0 extinctions
+# set non-zero extinctions to appropriate time period
 for (i in (1:nrow(vertex0_noamph))) {
   if (length(vertex_noamph_tot$No_Ex_Spec_tot[which(vertex_noamph_tot$Year_Block_Var == vertex0[i,1])]) > 0) {
     vertex0_noamph$NoExSpec[i] <- vertex_noamph_tot$No_Ex_Spec_tot[which(vertex_noamph_tot$Year_Block_Var == vertex0[i,1])]
   }
 }
 
+## BY CLASS
+
+# combine amphibian extinction data with human population data
 vertex0am <- data.frame(time_periods)
 vertex0am$NoExSpec <- 0
 # add missing time periods with 0 extinctions
+# set non-zero extinctions to appropriate time period
 for (i in (1:nrow(vertex0am))) {
   if (length(vertexam$No_Ex_Spec[which(vertexam$Year_Block_Var == vertex0am[i,1])]) > 0) {
     vertex0am$NoExSpec[i] <- vertexam$No_Ex_Spec[which(vertexam$Year_Block_Var == vertex0am[i,1])]
   }
 }
 
+# combine aves extinction data with human population data
 vertex0av <- data.frame(time_periods)
 vertex0av$NoExSpec <- 0
 # add missing time periods with 0 extinctions
+# set non-zero extinctions to appropriate time period
 for (i in (1:nrow(vertex0av))) {
   if (length(vertexav$No_Ex_Spec[which(vertexav$Year_Block_Var == vertex0av[i,1])]) > 0) {
     vertex0av$NoExSpec[i] <- vertexav$No_Ex_Spec[which(vertexav$Year_Block_Var == vertex0av[i,1])]
   }
 }
 
+# combine mammal extinction data with human population data
 vertex0ma <- data.frame(time_periods)
 vertex0ma$NoExSpec <- 0
 # add missing time periods with 0 extinctions
+# set non-zero extinctions to appropriate time period
 for (i in (1:nrow(vertex0ma))) {
   if (length(vertexma$No_Ex_Spec[which(vertexma$Year_Block_Var == vertex0ma[i,1])]) > 0) {
     vertex0ma$NoExSpec[i] <- vertexma$No_Ex_Spec[which(vertexma$Year_Block_Var == vertex0ma[i,1])]
   }
 }
 
+# combine reptile extinction data with human population data
 vertex0re <- data.frame(time_periods)
 vertex0re$NoExSpec <- 0
 # add missing time periods with 0 extinctions
+# set non-zero extinctions to appropriate time period
 for (i in (1:nrow(vertex0re))) {
   if (length(vertexre$No_Ex_Spec[which(vertexre$Year_Block_Var == vertex0re[i,1])]) > 0) {
     vertex0re$NoExSpec[i] <- vertexre$No_Ex_Spec[which(vertexre$Year_Block_Var == vertex0re[i,1])]

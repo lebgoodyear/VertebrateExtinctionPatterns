@@ -37,7 +37,9 @@ set.seed(26)
 
 # select time name to analyse data from set time periods
 time_name <- "1805-2000_5y"
+# generate sequence of time periods
 time_periods <- seq(1805, 2000, 5)
+# choose year_split (either 5 or 10) corresponding to time period data
 year_split <- 5
 
 # set path to data and scripts
@@ -69,6 +71,7 @@ names(pop_full)[4] <- "Pop"
 
 # define 3-fold cross validation with 3 repeats
 train_control <- trainControl(method="repeatedcv", number=5, repeats=5, seeds=as.list(54:80))
+# set sequence for seed generation of negative binomial model
 seq <- seq(54:(26*3**3))
 train_control_nb <- trainControl(method="repeatedcv", number=5, repeats=5, seeds=split(seq, ceiling(seq_along(seq)/3)))
 
@@ -81,14 +84,18 @@ train_control_nb <- trainControl(method="repeatedcv", number=5, repeats=5, seeds
 # mean is not equal to variance so quasipoisson or negative binomial distributions must be used
 
 # Models used:
-# BASELINE and with CROSS-VALIDATION fro GLMs
-# 1) mglm and mglmcv are GLMs using quasipoisson family with log link function
-# 2) mglmnb and mglmnbcv are negative binomial GLMs
+# BASELINE and with CROSS-VALIDATION for GLMs
+# 1) mglmid and mglmcvid are GLMs using quasipoisson family with identity link function
+# 2) mglm and mglmcv are GLMs using quasipoisson family with log link function
+# 3) mglmnb and mglmnbcv are negative binomial GLMs (CV runs over all possible links)
 # BASELINE only for GAMs (as difficult to use smoothers)
-# 3) mgam is a GAM using quasipoisson family with log link function
-# 4) mgamnb is a negative binomial GAM
+# 4) mgam is a GAM using quasipoisson family with log link function
+# 5) mgamnb is a negative binomial GAM
 
 # all these models are combined into one function with outputs stored for comparison
+
+# NOTE GAMs NO LONGER USED DUE TO OVERFITTING AND BAD MODEL STATS
+# NOTE ONLY CV MODELS USED FOR EASIER MODEL COMPARISON
 
 
 ###########################################################################################
@@ -142,6 +149,7 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
   cat("\n\nCV summary\n", capture.output(print(mglmcvid)), 
       file=paste0(path_out_mod, output_name, "_GLM.txt"), 
       sep = "\n", append=TRUE)
+  
   ## cross-validation for log link
   mglmcvlog <- train(form,
               method = "glm",
@@ -162,7 +170,7 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
   # MODEL 2: Negative Binomial GLM
   
   
-  ## base
+  ## base with identity
   mglmnb <- glm.nb(form, data=df, link="identity", maxit=maxset)
   r2_mglmnb <- with(summary(mglmnb), 1 - deviance/null.deviance) # calculate r^2 value
   # save outputs
@@ -173,6 +181,7 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
   cat("\n\nR^2", capture.output(r2_mglmnb), 
       file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
       sep = "\n", append=TRUE)
+  
   ## cross-validation
   mglmnbcv <- train(form, 
                method = "glm.nb", 
@@ -216,6 +225,7 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
   #    file=paste0(path_out_mod, output_name, "_GAMnb.txt"), 
   #    sep = "\n", append=TRUE)
   
+  
   # save models as list
   models <- list("mglmcvid" = mglmcvid,
                  "mglmcvlog" = mglmcvlog,
@@ -254,24 +264,24 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
 
 
 # model using poisson
-#m0 <- glm(NoExSpec ~ Pop, family=poisson(link="log"), data=expoptot)
+#m0 <- glm(NoExSpec ~ Pop, family=poisson(link="identity"), data=expoptot)
 #summary(m0)
 
 # plot mean vs variance to view overdispersion
-#plot(log(fitted(m1)),
-#     log((expoptot$NoExSpec-fitted(m1))^2),
+#plot(log(fitted(m0)),
+#     log((expoptot$NoExSpec-fitted(m0))^2),
 #     xlab=expression(hat(mu)),ylab=expression((y-hat(mu))^2),
 #     pch=20,col="blue")
 
 #abline(0,1) ## 'variance = mean' line
 
 # calculate dispersion parameter
-#dp = sum(residuals(m1,type ="pearson")^2)/m1$df.residual
+#dp = sum(residuals(m0,type ="pearson")^2)/m0$df.residual
 #dp
 
 # how much are coefficient estimates affected by the overdispersion?
 # this is the same as using quasipoisson
-#summary(m1,dispersion = dp)
+#summary(m0,dispersion = dp)
 
 
 #######################################################################################
@@ -285,7 +295,9 @@ run_models <- function(dataset, x, y, outliers=NA, output_name) {
 # 3) 1805-2000, split by 5 years, with 1900, 1955 outliers removed and 1995, 2000 removed to remove downward trend in GAMs
 # 4) 1710-2000, split by 10 years
 # 5) 1710-2000, split by 10 years, with 1900 outlier removed
-# 6) 1710-2000, split by 10 yearsm with 1900 outlier removed and 2000 removed to remove downward trend in GAMs
+# 6) 1710-2000, split by 10 years with 1900 outlier removed and 2000 removed to remove downward trend in GAMs
+
+# NOTE 3) AND 6) DON'T RUN PROPERLY BUT WE ARE NO LONGER USING GAMs ANYWAY
 
 # note outliers were chosen from the plots in explore_data.R
 # note correlation for 1805-2000 (5 years) was 0.76 so quite high (explore_data.R)
@@ -307,6 +319,7 @@ if (year_split == 5) {
 extot_outna <- run_models(expoptot, "Pop", "NoExSpec", NA, "extot_outna")
 extot_outp <- run_models(expoptot, "Pop", "NoExSpec", outliersp, "extot_outp")
 #extot_outr <- run_models(expoptot, "Pop", "NoExSpec", outliersr, "extot_outr")
+# extot_outr has errors so commented out
 
 
 # b) BY CLASS
@@ -330,7 +343,7 @@ extot_outp <- run_models(expoptot, "Pop", "NoExSpec", outliersp, "extot_outp")
 
 
 ########################################################################################
-############################ Plots with regression lines ###############################
+######################## Rough plots with regression lines #############################
 
 
 # plot human population (per time interval as specified above)
@@ -357,11 +370,6 @@ extot_outp <- run_models(expoptot, "Pop", "NoExSpec", outliersp, "extot_outp")
 #  theme_bw()
 # as suspected, these estimates are much larger
 
-# plot predictions for different scenarios
-# using data from UN
-# create separate plots for no extinctions and another for pop den data
-# plot on same grid to directly compare
-
 
 ########################################################################################
 ################################## Predictions #########################################
@@ -383,7 +391,7 @@ process_data <- function(dataset, year_split, scenario) {
   # OUTPUTS
   
   # a dataframe containing population data for all past and future time points,
-  # accroding to chosen UN scenario
+  # according to chosen UN scenario
   
   # only keep world pop data
   dataworld <- as.data.frame(dataset[which(dataset$Entity=="World"),])
@@ -434,7 +442,8 @@ make_predictions <- function(dataset, model) {
   pops <- as.data.frame(dataset$Pop)
   names(pops) <- "Pop"
   
-  # make precitions
+  # make predictions
+  # if statement to account for different model classes (CV ("train") or standard)
   if (class(model)[1] == "train") {
     preds <- predict(model, pops, type = "raw")
   } else {
@@ -445,7 +454,8 @@ make_predictions <- function(dataset, model) {
   preddf <- cbind(dataset, preds)
   names(preddf) <- c("Year", "Pop", "NoExSpec")
   
-  # finding the confidence intervals
+  # finding the confidence intervals (on link scale)
+  # if statement to account for different model classes (CV ("train") or standard)
   if (class(model)[1] == "train") {
     ci <- predict(model$finalModel, preddf, se.fit=TRUE, type = "link")
   } else {
@@ -517,6 +527,8 @@ dfs <- list(u95=popsu95, med=popsmed, l95=popsl95)
 # list of models to predict
 model_ls <- list("extot_outna" = extot_outna, "extot_outp" = extot_outp)
 
+# list of datasets for predictions (only relevant if not using whole dataset, e.g. by class)
+# otherwise fill with whole dataset name for length of model_ls
 plot_data <- list(expoptot, expoptot)
 
 # make predictions for each model for each dataset, save predictions as csv
@@ -524,7 +536,7 @@ plot_data <- list(expoptot, expoptot)
 for (ds in (1:length(model_ls))) {
   # set directory for results to be sent to
   path_out_mod <- paste0(path_out, names(model_ls)[[ds]], "/")
-  # set up correct data to plot
+  # set up correct data to plot (removing outliers)
   if (grepl("na", names(model_ls)[[ds]], fixed=TRUE) == TRUE) {
     dataset <- plot_data[[ds]]
   }
@@ -536,12 +548,15 @@ for (ds in (1:length(model_ls))) {
   }
   # run over all models in dataset
   for (mod in 1:length(model_ls[[ds]])) {
+    # get predictions as vector
     pred <- vector(mode="list", length=length(dfs))
+    # generate csv of predictions
     for (df in 1:length(dfs)) {
       full_preds <- make_predictions(dfs[[df]], model_ls[[ds]][[mod]])
       write.csv(full_preds, paste0(path_out_mod, names(model_ls)[[ds]], "_", names(model_ls[[ds]])[mod], "_", names(dfs)[[df]], "_preds.csv"))
       pred[[df]] <- full_preds
     }
+    # save plots as pdfs
     pdf(file=paste0(path_out_mod, names(model_ls[[ds]])[mod], "_", names(model_ls)[[ds]], "_preds.pdf"), width=10, height=7)
     print(ggplot() +
             geom_point(data = expoptot, aes(x = Year, y = NoExSpec), colour="black") +
@@ -570,14 +585,7 @@ for (ds in (1:length(model_ls))) {
 }
 
 
-#### confidence intervals work for GAMs??!?!
-#### think of way to extract model comparison variables in csv for easy comparison
-
-#### once code is completed, subset data for class and cont/island and run for each different thing
-#### also run over the two different time period options
-
-
-######## notes
+######## Notes for considerations
 
 
 # use negative binomial and quasipoisson since mean is not 
@@ -597,6 +605,8 @@ for (ds in (1:length(model_ls))) {
 # on previous number of extinctions
 
 # could look at rate of extinctions per year by dividing time periods accordingly...
+
+# confidence intervals for GAMs??!?!
 
 
 ## end of script
