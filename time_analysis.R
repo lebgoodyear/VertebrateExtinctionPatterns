@@ -86,6 +86,9 @@ for (t in 2:length(binned_years)-1) {
   }
 }
 
+# remove species that went extinct outside time period bounds
+vertex <- vertex[which(!is.na(vertex$Year_Block_Var)),]
+
 # set to match Jack's code
 vert_extinct <- vertex
 
@@ -110,7 +113,7 @@ add_zeroes <- function(data) {
   data0 <- data.frame(binned_years)
   # set count to zero for all years
   data0$n <- 0
-  # add extcintions to dataframe
+  # add extinctions to dataframe
   for (i in (1:nrow(data0))) {
     if (length(data$n[which(data$Year_Block_Var == data0[i,1])]) > 0) {
       data0$n[i] <- data$n[which(data$Year_Block_Var == data0[i,1])]
@@ -610,6 +613,13 @@ final_results_mk <- as.data.frame(rbind(totalex_mk0,amphmod_mk0, avesmod_mk0, ma
 names(final_results_mk) <- c("Region", "Taxa", "Tau", "2-sided P-value")
 write.csv(final_results_mk, paste0(path_out, "final_mannkendall_results.csv"))
 
+# 1460-1760 since many zeroes (0 amph ex, 0 rept ex, 0 cont bird ex)
+#final_results_mk_pre1760 <- as.data.frame(rbind(totalex_mk0, avesmod_mk0, mammmod_mk0,
+#                                        totalex_is_mk0, avesismod_mk0, mammismod_mk0,
+#                                        totalex_cont_mk0, mammcontmod_mk0))
+#names(final_results_mk_pre1760) <- c("Region", "Taxa", "Tau", "2-sided P-value")
+#write.csv(final_results_mk_pre1760, paste0(path_out, "final_mannkendall_results.csv"))
+
 
 #####################################################################################
 ######################## Pre- and post-industrial age onset #########################
@@ -633,6 +643,9 @@ ind_table[1,1] <- mean(df_glob_pre_1760$n)
 ind_table[2,1] <- mean(df_glob_post_1760$n)
 ind_table[1,2] <- (mean(df_glob_pre_1760$n) + mean(df_glob_post_1760$n))/2
 ind_table[2,2] <- (mean(df_glob_pre_1760$n) + mean(df_glob_post_1760$n))/2
+
+# save chi squared table as csv
+write.csv(ind_table, paste0(path_out, "chi_sq_tab.csv"))
 
 # run chisquare test
 chi_tot <- chisq.test(t(ind_table), correct=FALSE)
@@ -663,6 +676,9 @@ ind_table_is[2,1] <- mean(df_is_post_1760$n)
 ind_table_is[1,2] <- (mean(df_is_pre_1760$n) + mean(df_is_post_1760$n))/2
 ind_table_is[2,2] <- (mean(df_is_pre_1760$n) + mean(df_is_post_1760$n))/2
 
+# save chi squared table as csv
+write.csv(ind_table_is, paste0(path_out, "chi_sq_is_tab.csv"))
+
 # run chisquare test
 chi_is <- chisq.test(t(ind_table_is), correct=FALSE)
 
@@ -682,11 +698,14 @@ df_cont_post_1760 <- subset(cont0, years > indrev, select =c(years, n))
 # set up table for chi-squared test
 ind_table_cont <- data.frame(matrix(ncol=2,nrow=2))
 # if two groups are the same then the expected means are the means of the means
-names(ind_table_is) <- c("Observed", "Expected")
+names(ind_table_cont) <- c("Observed", "Expected")
 ind_table_cont[1,1] <- mean(df_cont_pre_1760$n)
 ind_table_cont[2,1] <- mean(df_cont_post_1760$n)
 ind_table_cont[1,2] <- (mean(df_cont_pre_1760$n) + mean(df_cont_post_1760$n))/2
 ind_table_cont[2,2] <- (mean(df_cont_pre_1760$n) + mean(df_cont_post_1760$n))/2
+
+# save chi squared table as csv
+write.csv(ind_table_cont, paste0(path_out, "chi_sq_cont_tab.csv"))
 
 # run chisquare test
 chi_cont <- chisq.test(ind_table_cont, correct=FALSE)
@@ -694,6 +713,39 @@ chi_cont <- chisq.test(ind_table_cont, correct=FALSE)
 # save output
 cat("Chi-squared for continents: ", capture.output(chi_cont), 
     file=paste0(path_out, "Totalex_chisq_indrev.txt"), 
+    sep = "\n", append=TRUE)
+
+
+##################################################################################
+####################### Recent amphibian extinctions #############################
+
+
+# find scaled year for 1950 and 1975
+pre <- amph0$years[which(amph0$binned_years == 1950)]
+post <- amph0$years[which(amph0$binned_years == 1975)]
+
+# subset by 1950-1975 and 1975-2000 where 1975 is start of amphibian spike
+df_1860 <- subset(amph0, ((pre < years) & (years <= post)), select =c(years, n))
+df_1975 <- subset(amph0, ((post < years) & (years < length(amph0$years))), select =c(years, n))
+
+# set up table for chi-squared test
+ind_table_amph <- data.frame(matrix(ncol=2,nrow=2))
+# if two groups are the same then the expected means are the means of the means
+names(ind_table_amph) <- c("Observed", "Expected")
+ind_table_amph[1,1] <- mean(df_1860$n)
+ind_table_amph[2,1] <- mean(df_1975$n)
+ind_table_amph[1,2] <- (mean(df_1860$n) + mean(df_1975$n))/2
+ind_table_amph[2,2] <- (mean(df_1860$n) + mean(df_1975$n))/2
+
+# save chi squared table as csv
+write.csv(ind_table_amph, paste0(path_out, "chi_sq_amph_tab.csv"))
+
+# run chisquare test
+chi_amph <- chisq.test(ind_table_amph, correct=FALSE)
+
+# save output
+cat("Chi-squared for Amphibians: ", capture.output(chi_amph), 
+    file=paste0(path_out, "Amph_chisq.txt"), 
     sep = "\n", append=TRUE)
 
 
