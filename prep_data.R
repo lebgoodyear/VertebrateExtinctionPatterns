@@ -5,7 +5,7 @@
 
 # Author: Luke Goodyear (lgoodyear01@qub.ac.uk)
 # Created: Jan 2022
-# Last updated: Mar 2022
+# Last updated: Apr 2022
 
 # clear workspace
 rm(list=ls())
@@ -84,9 +84,6 @@ for (t in 2:length(time_periods)-1) {
 }
 
 # remove NAs, which corresponds to any:
-# species extinct after 2000
-# species without exact years of exinction
-# species that went extinct before first time in time periods
 vertex <- vertex[which(!is.na(vertex$Year_Block_Var)),]
 
 # save for mapping
@@ -124,20 +121,22 @@ saveRDS(vertex_noamph_tot, paste0(path_out, time_name, "_noamph_vertex_tot.rds")
 
 
 #########################################################################################
-############################# Population density data prep ##############################
+################################ Population data prep ###################################
 
 
-# read in population density data
+# read in population data
 pop_full <- read.csv(paste0(path_data, "population_past_future.csv"), stringsAsFactors = F)
-popden_full <- read.csv(paste0(path_data, "human_pop_den_extra.csv"), stringsAsFactors = F)
+# read in population density data (no longer being used in analysis)
+#popden_full <- read.csv(paste0(path_data, "human_pop_den_extra.csv"), stringsAsFactors = F)
 
-# rename population density column
+# rename population column
 names(pop_full)[4] <- "Population"
-names(popden_full)[4] <- "PopDen"
+# rename population density column
+#names(popden_full)[4] <- "PopDen"
 
 # filter by time periods
-popden <- popden_full[which(popden_full$Year %in% time_periods),]
-popden <- popden[which(!(popden$PopDen == 0)),]
+#popden <- popden_full[which(popden_full$Year %in% time_periods),]
+#popden <- popden[which(!(popden$PopDen == 0)),]
 pop <- pop_full[which(pop_full$Year %in% time_periods),]
 pop <- pop[which(!(pop$Population == 0)),]
 
@@ -149,64 +148,66 @@ pop_tot <- subset(pop_tot, select=c("Year", "Population"))
 saveRDS(pop_tot, paste0(path_out, time_name, "_pop_tot.rds"))
 
 
+# note that the following code for population density is no longer being used for analysis
+
 ####### Summarise over mean population density across countries per time period ########
 
 
-# load world map data
-world <- ne_countries(scale = 'large', returnclass = 'sf')
-
-# find area of countries
-world$area_km2 <- st_area(world$geometry)/1e6
-world_sub <- as.data.frame(cbind(world$name, world$area_km2))
-names(world_sub) <- c("name", "area_km2")
-world_sub$area_km2 <- as.numeric(as.character(world_sub$area_km2))
-
-# fix major naming discrepancies
-popden$Entity[which(popden$Entity == "United States")] <- "United States of America"
-popden$Entity[which(popden$Entity == "Cote d'Ivoire")] <- "Côte d'Ivoire"
-popden$Entity[which(popden$Entity == "Democratic Republic of Congo")] <- "Dem. Rep. Congo"
-popden$Entity[which(popden$Entity == "Equatorial Guinea")] <- "Eq. Guinea"
-popden$Entity[which(popden$Entity == "Central African Republic")] <- "Central African Rep."
-
-# merge area data and pop den data
-popden_world_area <- merge(popden, world_sub, by.x="Entity", by.y="name")
-
-# calculate mean population density across countries per time period,
-# accounting for area weighting
-popden_tot <- popden_world_area %>% group_by(Year, .drop=FALSE) %>% summarize(Popden_tot = sum(PopDen * area_km2)/sum(area_km2))
-
-# save result for use in later scripts
-saveRDS(popden_tot, paste0(path_out, time_name, "_popden_tot.rds"))
+# # load world map data
+# world <- ne_countries(scale = 'large', returnclass = 'sf')
+# 
+# # find area of countries
+# world$area_km2 <- st_area(world$geometry)/1e6
+# world_sub <- as.data.frame(cbind(world$name, world$area_km2))
+# names(world_sub) <- c("name", "area_km2")
+# world_sub$area_km2 <- as.numeric(as.character(world_sub$area_km2))
+# 
+# # fix major naming discrepancies
+# popden$Entity[which(popden$Entity == "United States")] <- "United States of America"
+# popden$Entity[which(popden$Entity == "Cote d'Ivoire")] <- "Côte d'Ivoire"
+# popden$Entity[which(popden$Entity == "Democratic Republic of Congo")] <- "Dem. Rep. Congo"
+# popden$Entity[which(popden$Entity == "Equatorial Guinea")] <- "Eq. Guinea"
+# popden$Entity[which(popden$Entity == "Central African Republic")] <- "Central African Rep."
+# 
+# # merge area data and pop den data
+# popden_world_area <- merge(popden, world_sub, by.x="Entity", by.y="name")
+# 
+# # calculate mean population density across countries per time period,
+# # accounting for area weighting
+# popden_tot <- popden_world_area %>% group_by(Year, .drop=FALSE) %>% summarize(Popden_tot = sum(PopDen * area_km2)/sum(area_km2))
+# 
+# # save result for use in later scripts
+# saveRDS(popden_tot, paste0(path_out, time_name, "_popden_tot.rds"))
 
 
 ######### Summarise over mean change in population density across time periods ##########
 
 
-# calculate change in population density between time periods
-popden$Prop_change <- NA
-popden_final <- data.frame()
-for (area in unique(popden$Entity)) {
-  popden_sub <- popden[which(popden$Entity == area),]
-  if (nrow(popden_sub) > 1) {
-    for (time in (2:nrow(popden_sub))) {
-      popden_sub$Prop_change[time] <- (popden_sub$PopDen[time] - popden_sub$PopDen[time-1])/popden_sub$PopDen[time-1]
-    }
-  } else {popden_sub$Prop_change[1] <- NA}
-  popden_final <- rbind(popden_final, popden_sub)
-}
-
-# remove any NA proportional increases
-popden_final <- popden_final[which(!(is.na(popden_final$Prop_change))),]
-
-# save this result for mapping
-saveRDS(popden_final, paste0(path_out, time_name, "_popden_by_country.rds"))
-
-# summarise by the mean proportional change across countries per year
-# note this accounts for population density weighting
-prop_change_tot <- popden_final %>% group_by(Year, .drop=FALSE) %>% summarize(Prop_change_tot = sum(Prop_change * PopDen)/sum(PopDen))
-
-# save result for use in later scripts
-saveRDS(prop_change_tot, paste0(path_out, time_name, "_popden_change_tot.rds"))
+# # calculate change in population density between time periods
+# popden$Prop_change <- NA
+# popden_final <- data.frame()
+# for (area in unique(popden$Entity)) {
+#   popden_sub <- popden[which(popden$Entity == area),]
+#   if (nrow(popden_sub) > 1) {
+#     for (time in (2:nrow(popden_sub))) {
+#       popden_sub$Prop_change[time] <- (popden_sub$PopDen[time] - popden_sub$PopDen[time-1])/popden_sub$PopDen[time-1]
+#     }
+#   } else {popden_sub$Prop_change[1] <- NA}
+#   popden_final <- rbind(popden_final, popden_sub)
+# }
+# 
+# # remove any NA proportional increases
+# popden_final <- popden_final[which(!(is.na(popden_final$Prop_change))),]
+# 
+# # save this result for mapping
+# saveRDS(popden_final, paste0(path_out, time_name, "_popden_by_country.rds"))
+# 
+# # summarise by the mean proportional change across countries per year
+# # note this accounts for population density weighting
+# prop_change_tot <- popden_final %>% group_by(Year, .drop=FALSE) %>% summarize(Prop_change_tot = sum(Prop_change * PopDen)/sum(PopDen))
+# 
+# # save result for use in later scripts
+# saveRDS(prop_change_tot, paste0(path_out, time_name, "_popden_change_tot.rds"))
 
 ## manually check summarise results for mean proportional change across countries per year
 
@@ -241,22 +242,22 @@ saveRDS(prop_change_tot, paste0(path_out, time_name, "_popden_change_tot.rds"))
 ###################### Combine vertex and population datasets ###########################
 
 
-# combine all extinction data with human population data
-vertex0 <- data.frame(time_periods)
-vertex0$NoExSpec <- 0
+# all extinction data
 # add missing time periods with 0 extinctions
 # set non-zero extinctions to appropriate time period
+vertex0 <- data.frame(time_periods)
+vertex0$NoExSpec <- 0
 for (i in (1:nrow(vertex0))) {
   if (length(vertex_tot$No_Ex_Spec_tot[which(vertex_tot$Year_Block_Var == vertex0[i,1])]) > 0) {
     vertex0$NoExSpec[i] <- vertex_tot$No_Ex_Spec_tot[which(vertex_tot$Year_Block_Var == vertex0[i,1])]
   }
 }
 
-# combine extinction data without amphibians with human population data
-vertex0_noamph <- data.frame(time_periods)
-vertex0_noamph$NoExSpec <- 0
+# extinction data without amphibians
 # add missing time periods with 0 extinctions
 # set non-zero extinctions to appropriate time period
+vertex0_noamph <- data.frame(time_periods)
+vertex0_noamph$NoExSpec <- 0
 for (i in (1:nrow(vertex0_noamph))) {
   if (length(vertex_noamph_tot$No_Ex_Spec_tot[which(vertex_noamph_tot$Year_Block_Var == vertex0[i,1])]) > 0) {
     vertex0_noamph$NoExSpec[i] <- vertex_noamph_tot$No_Ex_Spec_tot[which(vertex_noamph_tot$Year_Block_Var == vertex0[i,1])]
@@ -265,44 +266,44 @@ for (i in (1:nrow(vertex0_noamph))) {
 
 ## BY CLASS
 
-# combine amphibian extinction data with human population data
-vertex0am <- data.frame(time_periods)
-vertex0am$NoExSpec <- 0
+# amphibian extinction data
 # add missing time periods with 0 extinctions
 # set non-zero extinctions to appropriate time period
+vertex0am <- data.frame(time_periods)
+vertex0am$NoExSpec <- 0
 for (i in (1:nrow(vertex0am))) {
   if (length(vertexam$No_Ex_Spec[which(vertexam$Year_Block_Var == vertex0am[i,1])]) > 0) {
     vertex0am$NoExSpec[i] <- vertexam$No_Ex_Spec[which(vertexam$Year_Block_Var == vertex0am[i,1])]
   }
 }
 
-# combine aves extinction data with human population data
-vertex0av <- data.frame(time_periods)
-vertex0av$NoExSpec <- 0
+# aves extinction data
 # add missing time periods with 0 extinctions
 # set non-zero extinctions to appropriate time period
+vertex0av <- data.frame(time_periods)
+vertex0av$NoExSpec <- 0
 for (i in (1:nrow(vertex0av))) {
   if (length(vertexav$No_Ex_Spec[which(vertexav$Year_Block_Var == vertex0av[i,1])]) > 0) {
     vertex0av$NoExSpec[i] <- vertexav$No_Ex_Spec[which(vertexav$Year_Block_Var == vertex0av[i,1])]
   }
 }
 
-# combine mammal extinction data with human population data
-vertex0ma <- data.frame(time_periods)
-vertex0ma$NoExSpec <- 0
+# mammal extinction data
 # add missing time periods with 0 extinctions
 # set non-zero extinctions to appropriate time period
+vertex0ma <- data.frame(time_periods)
+vertex0ma$NoExSpec <- 0
 for (i in (1:nrow(vertex0ma))) {
   if (length(vertexma$No_Ex_Spec[which(vertexma$Year_Block_Var == vertex0ma[i,1])]) > 0) {
     vertex0ma$NoExSpec[i] <- vertexma$No_Ex_Spec[which(vertexma$Year_Block_Var == vertex0ma[i,1])]
   }
 }
 
-# combine reptile extinction data with human population data
-vertex0re <- data.frame(time_periods)
-vertex0re$NoExSpec <- 0
+# reptile extinction data
 # add missing time periods with 0 extinctions
 # set non-zero extinctions to appropriate time period
+vertex0re <- data.frame(time_periods)
+vertex0re$NoExSpec <- 0
 for (i in (1:nrow(vertex0re))) {
   if (length(vertexre$No_Ex_Spec[which(vertexre$Year_Block_Var == vertex0re[i,1])]) > 0) {
     vertex0re$NoExSpec[i] <- vertexre$No_Ex_Spec[which(vertexre$Year_Block_Var == vertex0re[i,1])]

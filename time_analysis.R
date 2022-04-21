@@ -6,8 +6,7 @@
 
 # Author: Luke Goodyear (lgoodyear01@qub.ac.uk)
 # Created: Feb 2022
-# Last updated: Mar 2022
-# based on script by Jack V Johnson
+# Last updated: Apr 2022
 
 # clear workspace
 rm(list=ls())
@@ -20,9 +19,9 @@ rm(list=ls())
 # load required packages
 library("dplyr")
 library("tidyr")
-library("MASS") # for negative binomial
-library("caret") # for cross-validation
-library("pscl") # for zero-inflated models
+#library("MASS") # for negative binomial
+#library("caret") # for cross-validation
+#library("pscl") # for zero-inflated models
 library("Kendall") # for Mann-Kendall test
 
 # set seed for reproducibility
@@ -51,9 +50,9 @@ ifelse(!dir.exists(file.path(paste0(path_out_time, "ex_time_glms/"))), dir.creat
 path_out <- paste0(path_out_time, "ex_time_glms/")
 
 # define 3-fold cross validation with 3 repeats
-train_control <- trainControl(method="repeatedcv", number=5, repeats=5, seeds=as.list(54:80))
-seq <- seq(54:(26*3**3))
-train_control_nb <- trainControl(method="repeatedcv", number=5, repeats=5, seeds=split(seq, ceiling(seq_along(seq)/3)))
+#train_control <- trainControl(method="repeatedcv", number=5, repeats=5, seeds=as.list(54:80))
+#seq <- seq(54:(26*3**3))
+#train_control_nb <- trainControl(method="repeatedcv", number=5, repeats=5, seeds=split(seq, ceiling(seq_along(seq)/3)))
 
   
 ###################################################################################
@@ -87,10 +86,7 @@ for (t in 2:length(binned_years)-1) {
 }
 
 # remove species that went extinct outside time period bounds
-vertex <- vertex[which(!is.na(vertex$Year_Block_Var)),]
-
-# set to match Jack's code
-vert_extinct <- vertex
+vert_extinct <- vertex[which(!is.na(vertex$Year_Block_Var)),]
 
 # replace continent/island with continent since island effects won't be the same
 table(vert_extinct$Cont.2..Island.1.)
@@ -125,176 +121,178 @@ add_zeroes <- function(data) {
   return(data0)
 }
 
-# function for running and saving model results
-run_models <- function(dataset, x, y, outliers=NA, output_name, region, taxa) {
-  
-  # INPUTS
-  # dataset must be dataframe
-  # x must be name of predictor column as string
-  # y must be name of response column as string
-  # outliers must be vector containing outlying years or NA
-  # output_name is string to save outputs under
-  
-  # create directory to store the data for this time set
-  # first check if directory exists and if not, create it
-  ifelse(!dir.exists(file.path(paste0(path_out, output_name))), dir.create(file.path(paste0(path_out, output_name))), FALSE)
-  # set directory for results to be sent to
-  path_out_mod <- paste0(path_out, output_name, "/")
-  
-  # create dataset without outliers
-  if (is.na(outliers)) {
-    df <- dataset
-  } else {df <- dataset[which(!(dataset$Year %in% outliers)),]}
-  
-  # set formula for model creation
-  form <- as.formula(paste(y, '~', x))
-  
-  # set max iterations for negative binomial models
-  maxset = 1000
-  
-  
-  # MODEL 1: Quasipoisson GLM
-  
-  
-  ## cross-validation for log link
-  mglmcvlog <- train(form,
-                     method = "glm",
-                     family = quasipoisson(link = "log"),
-                     data=df,
-                     maxit = maxset,
-                     trControl=train_control)
-  # save outputs
-  cat("\n\n Quasipoisson GLM (log link) with cross-validation for ", outliers, " outliers\n", 
-      capture.output(summary(mglmcvlog)), 
-      file=paste0(path_out_mod, output_name, "_GLM.txt"), 
-      sep = "\n", append=TRUE)
-  cat("\n\nCV summary\n", capture.output(print(mglmcvlog)), 
-      file=paste0(path_out_mod, output_name, "_GLM.txt"), 
-      sep = "\n", append=TRUE)
-  
-  
-  # MODEL 2: Negative Binomial GLM
-  
-  
-  ## cross-validation
-  mglmnbcv <- train(form, 
-                    method = "glm.nb", 
-                    data=df,
-                    maxit = maxset,
-                    trControl=train_control_nb)
-  r2_mglmnbcv <- with(summary(mglmnbcv), 1 - deviance/null.deviance) # calculate r^2 value
-  # save outputs
-  cat("\n\n Negative Binomial GLM with cross-validation for ", outliers, " outliers\n", 
-      capture.output(summary(mglmnbcv)), 
-      file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
-      sep = "\n", append=TRUE)
-  cat("\n\nR^2", capture.output(r2_mglmnbcv), 
-      file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
-      sep = "\n", append=TRUE)
-  cat("\n\nCV summary\n", capture.output(print(mglmnbcv)), 
-      file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
-      sep = "\n", append=TRUE)
-  
-  
-  # save models as list
-  models <- list("mglmcvlog" = mglmcvlog,
-                 "mglmnbcv" = mglmnbcv)
-  
-  # generate csv of RMSE and R^2 values
-  metrics <- data.frame(matrix(ncol=10,nrow=length(models)))
-  names(metrics) <- c("Region", "Taxa", "Model", "Link", "Estimate", "Std. Error", "z/t value", "Pr(>|t|)", "RMSE", "R^2")
-  
-  for (model in 1:length(models)) {
-    
-    metrics$Region <- region
-    metrics$Taxa <- taxa
-    
-    if (names(models)[[model]] == "mglmcvlog") {
-      metrics$Model[model] <- "Quasipoisson GLM"
-      metrics$Link[model] <- "log"
-    }
-    if (names(models)[[model]] == "mglmnbcv") {
-      metrics$Model[model] <- "Negative Binomial GLM"
-      metrics$Link[model] <- models[[model]]$results$link
-    }
-  
-    metrics$Estimate[[model]] <- coef(summary(models[[model]]))[2,1]
-    metrics$`Std. Error`[[model]] <- coef(summary(models[[model]]))[2,2]
-    metrics$`z/t value`[[model]] <- coef(summary(models[[model]]))[2,3]
-    metrics$`Pr(>|t|)`[[model]] <- coef(summary(models[[model]]))[2,4]
-    if (!is.null(models[[model]]$results$parameter)) {
-      metrics$RMSE[model] <- models[[model]]$results[[2]]
-      metrics$`R^2`[[model]] <- models[[model]]$results[[3]]
-      metrics$Estimate[[model]] <- models[[model]]$finalModel$coefficients[["years"]]
-    } else {
-      metrics$RMSE[model] <- models[[model]]$results[[2]][[which(models[[model]]$results$link==models[[model]]$finalModel$family$link)]]
-      metrics$`R^2`[[model]] <- models[[model]]$results[[3]][[which(models[[model]]$results$link==models[[model]]$finalModel$family$link)]]
-    }
-  }
-  
-  # save as csv
-  write.csv(metrics, paste0(path_out_mod, output_name, "_model_comparison.csv"))
-  
-  # return models
-  return(metrics)
-  
-}
+# no longer running these models for analysis
+# # function for running and saving model results
+# run_models <- function(dataset, x, y, outliers=NA, output_name, region, taxa) {
+#   
+#   # INPUTS
+#   # dataset must be dataframe
+#   # x must be name of predictor column as string
+#   # y must be name of response column as string
+#   # outliers must be vector containing outlying years or NA
+#   # output_name is string to save outputs under
+#   
+#   # create directory to store the data for this time set
+#   # first check if directory exists and if not, create it
+#   ifelse(!dir.exists(file.path(paste0(path_out, output_name))), dir.create(file.path(paste0(path_out, output_name))), FALSE)
+#   # set directory for results to be sent to
+#   path_out_mod <- paste0(path_out, output_name, "/")
+#   
+#   # create dataset without outliers
+#   if (is.na(outliers)) {
+#     df <- dataset
+#   } else {df <- dataset[which(!(dataset$Year %in% outliers)),]}
+#   
+#   # set formula for model creation
+#   form <- as.formula(paste(y, '~', x))
+#   
+#   # set max iterations for negative binomial models
+#   maxset = 1000
+#   
+#   
+#   # MODEL 1: Quasipoisson GLM
+#   
+#   
+#   ## cross-validation for log link
+#   mglmcvlog <- train(form,
+#                      method = "glm",
+#                      family = quasipoisson(link = "log"),
+#                      data=df,
+#                      maxit = maxset,
+#                      trControl=train_control)
+#   # save outputs
+#   cat("\n\n Quasipoisson GLM (log link) with cross-validation for ", outliers, " outliers\n", 
+#       capture.output(summary(mglmcvlog)), 
+#       file=paste0(path_out_mod, output_name, "_GLM.txt"), 
+#       sep = "\n", append=TRUE)
+#   cat("\n\nCV summary\n", capture.output(print(mglmcvlog)), 
+#       file=paste0(path_out_mod, output_name, "_GLM.txt"), 
+#       sep = "\n", append=TRUE)
+#   
+#   
+#   # MODEL 2: Negative Binomial GLM
+#   
+#   
+#   ## cross-validation
+#   mglmnbcv <- train(form, 
+#                     method = "glm.nb", 
+#                     data=df,
+#                     maxit = maxset,
+#                     trControl=train_control_nb)
+#   r2_mglmnbcv <- with(summary(mglmnbcv), 1 - deviance/null.deviance) # calculate r^2 value
+#   # save outputs
+#   cat("\n\n Negative Binomial GLM with cross-validation for ", outliers, " outliers\n", 
+#       capture.output(summary(mglmnbcv)), 
+#       file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
+#       sep = "\n", append=TRUE)
+#   cat("\n\nR^2", capture.output(r2_mglmnbcv), 
+#       file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
+#       sep = "\n", append=TRUE)
+#   cat("\n\nCV summary\n", capture.output(print(mglmnbcv)), 
+#       file=paste0(path_out_mod, output_name, "_GLMnb.txt"), 
+#       sep = "\n", append=TRUE)
+#   
+#   
+#   # save models as list
+#   models <- list("mglmcvlog" = mglmcvlog,
+#                  "mglmnbcv" = mglmnbcv)
+#   
+#   # generate csv of RMSE and R^2 values
+#   metrics <- data.frame(matrix(ncol=10,nrow=length(models)))
+#   names(metrics) <- c("Region", "Taxa", "Model", "Link", "Estimate", "Std. Error", "z/t value", "Pr(>|t|)", "RMSE", "R^2")
+#   
+#   for (model in 1:length(models)) {
+#     
+#     metrics$Region <- region
+#     metrics$Taxa <- taxa
+#     
+#     if (names(models)[[model]] == "mglmcvlog") {
+#       metrics$Model[model] <- "Quasipoisson GLM"
+#       metrics$Link[model] <- "log"
+#     }
+#     if (names(models)[[model]] == "mglmnbcv") {
+#       metrics$Model[model] <- "Negative Binomial GLM"
+#       metrics$Link[model] <- models[[model]]$results$link
+#     }
+#   
+#     metrics$Estimate[[model]] <- coef(summary(models[[model]]))[2,1]
+#     metrics$`Std. Error`[[model]] <- coef(summary(models[[model]]))[2,2]
+#     metrics$`z/t value`[[model]] <- coef(summary(models[[model]]))[2,3]
+#     metrics$`Pr(>|t|)`[[model]] <- coef(summary(models[[model]]))[2,4]
+#     if (!is.null(models[[model]]$results$parameter)) {
+#       metrics$RMSE[model] <- models[[model]]$results[[2]]
+#       metrics$`R^2`[[model]] <- models[[model]]$results[[3]]
+#       metrics$Estimate[[model]] <- models[[model]]$finalModel$coefficients[["years"]]
+#     } else {
+#       metrics$RMSE[model] <- models[[model]]$results[[2]][[which(models[[model]]$results$link==models[[model]]$finalModel$family$link)]]
+#       metrics$`R^2`[[model]] <- models[[model]]$results[[3]][[which(models[[model]]$results$link==models[[model]]$finalModel$family$link)]]
+#     }
+#   }
+#   
+#   # save as csv
+#   write.csv(metrics, paste0(path_out_mod, output_name, "_model_comparison.csv"))
+#   
+#   # return models
+#   return(metrics)
+#   
+# }
 
-# function to run zero-inflated models and save results
-run_zeroinf <- function(dataset, x, y, outliers=NA, output_name, region, taxa) {
-  
-  # INPUTS
-  # dataset must be dataframe
-  # x must be name of predictor column as string
-  # y must be name of response column as string
-  # outliers must be vector containing outlying years or NA
-  # output_name is string to save outputs under
-  
-  # create directory to store the data for this time set
-  # first check if directory exists and if not, create it
-  ifelse(!dir.exists(file.path(paste0(path_out, output_name))), dir.create(file.path(paste0(path_out, output_name))), FALSE)
-  # set directory for results to be sent to
-  path_out_mod <- paste0(path_out, output_name, "/")
-  
-  # create dataset without outliers
-  if (is.na(outliers)) {
-    df <- dataset
-  } else {df <- dataset[which(!(dataset$Year %in% outliers)),]}
-  
-  # set formula for model creation
-  form <- as.formula(paste(y, '~', x))
-  
-  # run zero-inflated model
-  z <- zeroinfl(form, data=dataset, dist="negbin")
-  
-  # save outputs
-  cat("\n\n Zero-inflated negative binomial for ", outliers, " outliers\n", 
-      capture.output(summary(z)), 
-      file=paste0(path_out_mod, output_name, "_GLM.txt"), 
-      sep = "\n", append=TRUE)
-  
-  # generate csv of RMSE and R^2 values
-  metrics <- data.frame(matrix(ncol=11,nrow=1))
-  names(metrics) <- c("Region", "Taxa", "Model", "Estimate", "Std. Error", "z/t value", "Pr(>|t|)", "Estimate0", "Std. Error0", "z/t value0", "Pr(>|t|)0")
-  
-  metrics$Region <- region
-  metrics$Taxa <- taxa
-  metrics$Model <- "Zero-inflated Negative Binomial"
-    
-  metrics$Estimate <- coef(summary(z))[[1]][2,1]
-  metrics$`Std. Error` <- coef(summary(z))[[1]][2,2]
-  metrics$`z/t value` <- coef(summary(z))[[1]][2,3]
-  metrics$`Pr(>|t|)` <- coef(summary(z))[[1]][2,4]
-  
-  metrics$Estimate0 <- coef(summary(z))[[2]][2,1]
-  metrics$`Std. Error0` <- coef(summary(z))[[2]][2,2]
-  metrics$`z/t value0` <- coef(summary(z))[[2]][2,3]
-  metrics$`Pr(>|t|)0` <- coef(summary(z))[[2]][2,4]
-  
-  # return models
-  return(metrics)
-  
-}
+# no longer running these models for analysis
+# # function to run zero-inflated models and save results
+# run_zeroinf <- function(dataset, x, y, outliers=NA, output_name, region, taxa) {
+#   
+#   # INPUTS
+#   # dataset must be dataframe
+#   # x must be name of predictor column as string
+#   # y must be name of response column as string
+#   # outliers must be vector containing outlying years or NA
+#   # output_name is string to save outputs under
+#   
+#   # create directory to store the data for this time set
+#   # first check if directory exists and if not, create it
+#   ifelse(!dir.exists(file.path(paste0(path_out, output_name))), dir.create(file.path(paste0(path_out, output_name))), FALSE)
+#   # set directory for results to be sent to
+#   path_out_mod <- paste0(path_out, output_name, "/")
+#   
+#   # create dataset without outliers
+#   if (is.na(outliers)) {
+#     df <- dataset
+#   } else {df <- dataset[which(!(dataset$Year %in% outliers)),]}
+#   
+#   # set formula for model creation
+#   form <- as.formula(paste(y, '~', x))
+#   
+#   # run zero-inflated model
+#   z <- zeroinfl(form, data=dataset, dist="negbin")
+#   
+#   # save outputs
+#   cat("\n\n Zero-inflated negative binomial for ", outliers, " outliers\n", 
+#       capture.output(summary(z)), 
+#       file=paste0(path_out_mod, output_name, "_GLM.txt"), 
+#       sep = "\n", append=TRUE)
+#   
+#   # generate csv of RMSE and R^2 values
+#   metrics <- data.frame(matrix(ncol=11,nrow=1))
+#   names(metrics) <- c("Region", "Taxa", "Model", "Estimate", "Std. Error", "z/t value", "Pr(>|t|)", "Estimate0", "Std. Error0", "z/t value0", "Pr(>|t|)0")
+#   
+#   metrics$Region <- region
+#   metrics$Taxa <- taxa
+#   metrics$Model <- "Zero-inflated Negative Binomial"
+#     
+#   metrics$Estimate <- coef(summary(z))[[1]][2,1]
+#   metrics$`Std. Error` <- coef(summary(z))[[1]][2,2]
+#   metrics$`z/t value` <- coef(summary(z))[[1]][2,3]
+#   metrics$`Pr(>|t|)` <- coef(summary(z))[[1]][2,4]
+#   
+#   metrics$Estimate0 <- coef(summary(z))[[2]][2,1]
+#   metrics$`Std. Error0` <- coef(summary(z))[[2]][2,2]
+#   metrics$`z/t value0` <- coef(summary(z))[[2]][2,3]
+#   metrics$`Pr(>|t|)0` <- coef(summary(z))[[2]][2,4]
+#   
+#   # return models
+#   return(metrics)
+#   
+# }
 
 # function to run Mann-Kendall test
 run_mk <- function(dataset, y, region, taxa) {
@@ -608,8 +606,8 @@ reptcontmod_mk0 <- run_mk(reptcont0, "n", "Continent", "Reptilia")
 final_results_mk <- as.data.frame(rbind(totalex_mk0,amphmod_mk0, avesmod_mk0, mammmod_mk0, reptmod_mk0,
                         totalex_is_mk0, amphismod_mk0, avesismod_mk0, mammismod_mk0, reptismod_mk0,
                         totalex_cont_mk0, amphcontmod_mk0, avescontmod_mk0, mammcontmod_mk0, reptcontmod_mk0))
-# create dataframe to save Mann-Kendall results
-#mk_final <- data.frame(matrix(ncol=4))
+
+# rename columns and save to csv
 names(final_results_mk) <- c("Region", "Taxa", "Tau", "2-sided P-value")
 write.csv(final_results_mk, paste0(path_out, "final_mannkendall_results.csv"))
 
@@ -658,10 +656,6 @@ cat("Chi-squared for global: ", capture.output(chi_tot),
 
 ################################ Island ###########################################
 
-
-#names(cont0)[2] <- "Continent"
-#names(island0)[2] <- "Island"
-#df_contis <- merge(cont0, island0, by.x = "binned_years", by.y="binned_years")
 
 # subset by pre- and po-st industrial age onset
 df_is_pre_1760 <- subset(island0, years <= indrev, select =c(years, n))
