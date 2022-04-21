@@ -10,7 +10,7 @@ Bash script that creates a conda environment containing the required R packages 
 
 2) prep_data.R
 
-Prepares the extinction data and human population data by filtering, calculating human population density change, binning the data by custom year blocks and combining the two data sets.
+Prepares the extinction data and human population data by filtering, binning the data by custom year blocks and combining the two data sets.
 
 3) explore_data.R
 
